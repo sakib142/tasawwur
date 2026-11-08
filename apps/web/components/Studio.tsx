@@ -6,6 +6,7 @@ import type { VideoParamsInput } from "@tasawwur/schema";
 import { PRESETS, VOICES } from "@/lib/presets";
 import { useCatalogue } from "@/lib/useCatalogue";
 import { TermCheck } from "@/components/TermCheck";
+import Link from "next/link";
 import { ActivityLog } from "@/components/ActivityLog";
 import { useTaskStream } from "@/lib/useTaskStream";
 
@@ -20,6 +21,53 @@ export function Studio() {
   const [script, setScript] = useState("");
   const [terms, setTerms] = useState("");
   const [voice, setVoice] = useState(PRESETS[0]!.params.voice_name ?? "");
+  const [language, setLanguage] = useState("");
+
+  // Writing is separate from rendering: it has its own in-flight state so the
+  // Generate button is not blocked while a script is being written.
+  const [writing, setWriting] = useState<"script" | "terms" | null>(null);
+  const [writeError, setWriteError] = useState<string | null>(null);
+
+  async function write(what: "script" | "terms") {
+    setWriting(what);
+    setWriteError(null);
+    try {
+      if (what === "script") {
+        const res = await fetch("/api/llm/script", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            subject: subject.trim(),
+            targetSeconds: 40,
+            ...(language ? { language } : {}),
+          }),
+        });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error ?? "Could not write the script.");
+        setScript(body.script);
+        // Keywords follow from the script, so write them in the same gesture.
+        await writeTerms(body.script);
+      } else {
+        await writeTerms(script.trim());
+      }
+    } catch (e) {
+      setWriteError(e instanceof Error ? e.message : "Something went wrong.");
+    } finally {
+      setWriting(null);
+    }
+  }
+
+  async function writeTerms(forScript: string) {
+    setWriting("terms");
+    const res = await fetch("/api/llm/terms", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ script: forScript, count: 6 }),
+    });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error ?? "Could not choose keywords.");
+    setTerms((body.terms as string[]).join(", "));
+  }
 
   const [phase, setPhase] = useState<Phase>("idle");
   const [taskId, setTaskId] = useState<string | null>(null);
@@ -117,7 +165,18 @@ export function Studio() {
           </div>
         </Field>
 
-        <Field label="Topic" hint="Leave blank if you are writing the script yourself.">
+        <Field
+          label="Topic"
+          labelAside={
+            <Link
+              href="/settings"
+              className="text-xs font-normal text-stone-500 underline underline-offset-2 hover:text-stone-900 dark:hover:text-stone-100"
+            >
+              Configure AI model
+            </Link>
+          }
+          hint="Leave blank if you are writing the script yourself."
+        >
           <input
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
@@ -125,6 +184,31 @@ export function Studio() {
             className={inputClass}
           />
         </Field>
+
+        <Field label="Script language" hint="Auto-detected from the topic unless set.">
+          <select
+            value={language}
+            onChange={(e) => setLanguage(e.target.value)}
+            className={inputClass}
+          >
+            <option value="">Auto detect</option>
+            {["English", "Arabic", "Spanish", "French", "German", "Hindi", "Urdu", "Chinese"].map(
+              (l) => (
+                <option key={l} value={l}>
+                  {l}
+                </option>
+              ),
+            )}
+          </select>
+        </Field>
+
+        <WriteButton
+          onClick={() => write("script")}
+          disabled={!subject.trim() || writing !== null}
+          busy={writing === "script"}
+          label="Write script and keywords"
+          busyLabel={writing === "terms" ? "Choosing keywords…" : "Writing…"}
+        />
 
         <Field
           label="Script"
@@ -138,6 +222,18 @@ export function Studio() {
             className={`${inputClass} resize-y font-[inherit]`}
           />
         </Field>
+
+        <WriteButton
+          onClick={() => write("terms")}
+          disabled={!script.trim() || writing !== null}
+          busy={writing === "terms"}
+          label="Choose keywords from the script"
+          busyLabel="Choosing keywords…"
+        />
+
+        {writeError && (
+          <p className="-mt-2 text-xs text-red-700 dark:text-red-400">{writeError}</p>
+        )}
 
         <Field
           label="Search terms"
@@ -297,21 +393,56 @@ export function Studio() {
   );
 }
 
+/** A full-width action that writes into one of the fields below it. */
+function WriteButton({
+  onClick,
+  disabled,
+  busy,
+  label,
+  busyLabel,
+}: {
+  onClick: () => void;
+  disabled: boolean;
+  busy: boolean;
+  label: string;
+  busyLabel: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="flex items-center justify-center gap-2 rounded-md border border-stone-300 px-3 py-2 text-sm transition-colors hover:border-stone-400 disabled:cursor-not-allowed disabled:opacity-40 dark:border-stone-700 dark:hover:border-stone-500"
+    >
+      <span aria-hidden className={busy ? "animate-pulse" : undefined}>
+        ✦
+      </span>
+      {busy ? busyLabel : label}
+    </button>
+  );
+}
+
 const inputClass =
   "w-full rounded-md border border-stone-300 bg-transparent px-3 py-2 text-sm outline-none transition-colors placeholder:text-stone-400 focus:border-stone-900 dark:border-stone-700 dark:focus:border-stone-300";
 
 function Field({
   label,
   hint,
+  labelAside,
   children,
 }: {
   label: string;
   hint?: string;
+  /** Sits opposite the label — a link or a hint that needs its own placement. */
+  labelAside?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <label className="flex flex-col gap-1.5">
-      <span className="text-sm font-medium">{label}</span>
+      <span className="flex items-baseline justify-between gap-3 text-sm font-medium">
+        {label}
+        {labelAside}
+      </span>
       {children}
       {hint && <span className="text-xs leading-relaxed text-stone-500">{hint}</span>}
     </label>

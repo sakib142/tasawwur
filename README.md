@@ -181,7 +181,7 @@ If that fails, the GUI and the engine have drifted. Fix the drift — don't rela
 |---|---|---|
 | Foundation | Monorepo, schema, typed contract | **done** |
 | Interface | GUI, voices, fonts, settings | **in progress** |
-| Services | Script and keyword generation, stock search, speech | not started |
+| Services | Script and keyword writing, stock search, speech | **done** |
 | Renderer | ffmpeg filter graphs, captions, mixing | not started |
 | Standalone | No external engine required | not started |
 
@@ -209,6 +209,8 @@ Measured while testing output, and worth getting right the first time:
 - Rendering is not implemented yet; an external engine is required.
 - No task history — closing the tab loses the UI's view of a render, though the file
   still lands on disk.
+- Script writing requires the Claude CLI; the Ollama option is declared but not
+  implemented yet.
 - Engine task state is in-memory, so it does not survive a restart.
 
 ## Licence
