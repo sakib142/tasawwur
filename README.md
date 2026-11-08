@@ -170,6 +170,9 @@ gigabytes of temp files, so it needs a long-running worker — it cannot run in 
 serverless function. Everything else is ordinary Node work: ffmpeg does the heavy
 lifting and is driven by filter graphs.
 
+See [docs/DECISIONS.md](./docs/DECISIONS.md) for why services here are written
+from protocols rather than from other implementations.
+
 ### Rendering details that are easy to get wrong
 
 Measured while testing output, and worth getting right the first time:
