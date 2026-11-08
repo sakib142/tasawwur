@@ -15,6 +15,29 @@ export interface Preset {
   params: VideoParamsInput;
 }
 
+/**
+ * The differences between presets, in the words someone choosing one would use.
+ *
+ * A preset changes ten settings, and the form shows almost none of them — so
+ * without this the three buttons look interchangeable and the choice reads as
+ * decoration. Derived from the params rather than written out separately, so it
+ * cannot drift from what is actually sent.
+ */
+export function describePreset(preset: Preset): string[] {
+  const p = preset.params;
+  const shape = p.video_aspect === "16:9" ? "Landscape 16:9" : "Vertical 9:16";
+  const captions =
+    p.subtitle_display_mode === "word_by_word"
+      ? `One word at a time${p.subtitle_animation === "pop_spring" ? ", popping in" : ""}`
+      : "Full sentences";
+  return [
+    shape,
+    captions,
+    `${p.video_clip_duration}s cuts`,
+    `${p.font_size}px captions`,
+  ];
+}
+
 const CAPTION_BASE = {
   font_name: "BeVietnamPro-Bold.ttf",
   text_fore_color: "#FFFFFF",

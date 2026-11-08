@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { TasawwurClient, ApiError } from "@tasawwur/api-client";
 import type { VideoParamsInput } from "@tasawwur/schema";
-import { PRESETS, VOICES } from "@/lib/presets";
+import { PRESETS, VOICES, describePreset } from "@/lib/presets";
 import { useCatalogue } from "@/lib/useCatalogue";
 import { TermCheck } from "@/components/TermCheck";
 import Link from "next/link";
@@ -145,7 +145,22 @@ export function Studio() {
     <div className="grid gap-8 lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)]">
       {/* ---- controls ---- */}
       <section className="flex flex-col gap-6">
-        <Field label="Style" hint={preset.hint}>
+        <Field
+          label="Style"
+          hint={preset.hint}
+          labelAside={
+            <span className="flex flex-wrap justify-end gap-1">
+              {describePreset(preset).map((bit) => (
+                <span
+                  key={bit}
+                  className="rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-normal text-stone-600 dark:bg-stone-800 dark:text-stone-300"
+                >
+                  {bit}
+                </span>
+              ))}
+            </span>
+          }
+        >
           <div className="flex gap-2">
             {PRESETS.map((p) => (
               <button
