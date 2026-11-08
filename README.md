@@ -7,23 +7,22 @@ tasawwur generates narrated short videos from a topic or a script. It writes the
 narration, finds matching stock footage, speaks it aloud, times the captions to the
 voice, and renders a finished MP4 — using only free services.
 
-> **Status: early.** The TypeScript GUI and service layer are working. Rendering is
-> still delegated to the Python engine it is being migrated from. See
-> [Migration](#migration) for exactly what is and is not ported yet.
+> **Status: early.** The GUI and service layer are working. Video rendering is not
+> implemented yet and is currently delegated to an external engine over HTTP. See
+> [Roadmap](#roadmap) for exactly what does and does not work today.
 
 ---
 
 ## Why this exists
 
-This began as a front-end for
-[MoneyPrinterTurbo](https://github.com/harry0703/MoneyPrinterTurbo), whose pipeline is
-genuinely good: correct audio/video sync, careful codec fallback, hard-won handling of
-4K sources and odd aspect ratios. What it lacked was an interface worth using — 8,477
-lines of Streamlit in a single file.
+Making a short video should not cost anything, and it should not require a studio.
+Everything tasawwur depends on is free: Microsoft Edge's speech synthesis, Pixabay and
+Pexels for footage, ffmpeg for rendering. No API keys, no per-minute billing, no
+account. Point it at an idea and it hands back an MP4.
 
-Rather than wrap that, tasawwur is porting the whole pipeline to TypeScript so there is
-one language, one toolchain, and a UI that can actually be designed. The original is MIT
-licensed and its copyright is preserved in [LICENSE](./LICENSE).
+It is built to be pleasant to use and simple to read — one language end to end,
+TypeScript everywhere, with the interface treated as part of the product rather than an
+afterthought.
 
 ## What makes a good video
 
@@ -67,7 +66,8 @@ Write the script to fit terms that pass the probe, not the other way round.
 
 ## Quick start
 
-**Requirements:** Node 20+, pnpm 10+, ffmpeg, and (for now) the Python engine.
+**Requirements:** Node 20+, pnpm 10+, ffmpeg, and — until the renderer lands — a
+rendering engine reachable over HTTP (see [Rendering](#rendering)).
 
 ```bash
 pnpm install
@@ -75,12 +75,11 @@ cp apps/web/.env.example apps/web/.env.local   # then edit it
 pnpm dev                                        # http://localhost:3000
 ```
 
-The engine must be running separately until the renderer is ported:
+### Rendering
 
-```bash
-# in the MoneyPrinterTurbo checkout
-python -m uvicorn app.asgi:app --host 127.0.0.1 --port 8080
-```
+Until the renderer is built, tasawwur delegates rendering to an external engine over
+HTTP. Any service implementing the same REST contract will work — point `ENGINE_URL` at
+it. The contract is defined in [`packages/schema`](./packages/schema/src/api.ts).
 
 ### Environment
 
@@ -111,8 +110,9 @@ is structural: **as each service is reimplemented in TypeScript, its route stops
 proxied and becomes a real handler.** The GUI never changes. The final step is deleting
 the last proxy branch.
 
-Two routes are already native and never touch Python: `/api/voices` fetches Microsoft's
-public Edge TTS catalogue directly, and `/api/settings` owns its own store.
+Two routes are already implemented here and never leave the process: `/api/voices`
+fetches Microsoft's public Edge TTS catalogue directly, and `/api/settings` owns its
+own store.
 
 ### The pipeline
 
@@ -151,36 +151,35 @@ expect(Object.keys(VideoParams.shape)).toHaveLength(40);
 
 If that fails, the GUI and the engine have drifted. Fix the drift — don't relax the test.
 
-## Migration
+## Roadmap
 
-| Stage | Scope | Status |
+| Milestone | Scope | Status |
 |---|---|---|
-| 0 | Monorepo, schema, contract | **done** |
-| 1 | GUI against the engine; voices, fonts, settings native | **in progress** |
-| 2 | Port `llm`, `material`, `voice` to TypeScript | not started |
-| 3 | Port the renderer to ffmpeg filter graphs | not started |
-| 4 | Delete Python | not started |
+| Foundation | Monorepo, schema, typed contract | **done** |
+| Interface | GUI, voices, fonts, settings | **in progress** |
+| Services | Script and keyword generation, stock search, speech | not started |
+| Renderer | ffmpeg filter graphs, captions, mixing | not started |
+| Standalone | No external engine required | not started |
 
-**Nothing requires Python.** Every dependency has a Node equivalent — the renderer uses
-only 8 moviepy symbols, and the final concat already shells out to ffmpeg. The real
-constraint is process lifetime: rendering is minutes of CPU and gigabytes of temp files,
-so it needs a long-running worker regardless of language. It cannot run in a serverless
-function.
+The one real constraint is **process lifetime**. Rendering is minutes of CPU and
+gigabytes of temp files, so it needs a long-running worker — it cannot run in a
+serverless function. Everything else is ordinary Node work: ffmpeg does the heavy
+lifting and is driven by filter graphs.
 
-### Behaviours that must survive the port
+### Rendering details that are easy to get wrong
 
-Each exists because of a real bug, and each is easy to lose in a rewrite:
+Measured while testing output, and worth getting right the first time:
 
 - A **+0.1s** duration margin — frame rounding otherwise leaves a black tail.
 - BT.709 conversion **and** tagging, or colours shift in players and on YouTube.
 - Codec probing with runtime fallback to `libx264` when a hardware encoder fails.
 - Audio duration measured from the **written file**, not the last word boundary. Edge TTS
-  leaves ~0.88s of tail, which is 19% of a short clip.
+  leaves roughly 0.88s of tail, which is 19% of a short clip.
 - Subtitle font paths confined to the fonts directory (path-traversal guard).
 
 ## Known rough edges
 
-- Rendering still requires the Python engine.
+- Rendering is not implemented yet; an external engine is required.
 - Progress polls every 2 seconds; the engine's richer per-clip logs are not streamed yet.
 - No task history — closing the tab loses the UI's view of a render, though the file
   still lands on disk.
@@ -189,8 +188,7 @@ Each exists because of a real bug, and each is easy to lose in a rewrite:
 
 ## Licence
 
-MIT. Derived from [MoneyPrinterTurbo](https://github.com/harry0703/MoneyPrinterTurbo)
-(MIT, © 2024 Harry), whose copyright notice is preserved in [LICENSE](./LICENSE).
+MIT — see [LICENSE](./LICENSE).
 
 Generated videos use third-party stock footage and synthesised speech. Check the terms of
 Pixabay, Pexels, and Microsoft Edge TTS before publishing at volume or monetising.

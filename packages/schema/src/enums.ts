@@ -1,9 +1,9 @@
 import { z } from "zod";
 
 /**
- * Values mirror app/models/schema.py and app/models/const.py in
- * MoneyPrinterTurbo v1.3.10. The wire values must stay byte-identical while
- * the Python engine still serves requests, so do not "tidy" them.
+ * Wire values for the rendering contract. They must stay byte-identical for
+ * any engine implementing it, so do not "tidy" them — the capitalised
+ * transition names and the non-sequential task states are deliberate.
  */
 
 export const VideoAspect = z.enum(["16:9", "9:16", "1:1"]);

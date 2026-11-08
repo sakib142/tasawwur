@@ -2,11 +2,11 @@ import { z } from "zod";
 import { TaskState } from "./enums.ts";
 
 /**
- * Response contracts for the MoneyPrinterTurbo HTTP API (v1.3.x), captured from
- * its live /openapi.json. Every response is wrapped in the same envelope.
+ * Response contracts for the rendering API. Every response is wrapped in the
+ * same envelope.
  *
- * Stage 1 talks to this API directly. Stages 2-3 replace the implementation
- * behind it one service at a time; these shapes are the thing that stays fixed.
+ * The GUI talks to this contract today via an external engine. As each service
+ * is implemented here the contract stays fixed — it is the stable boundary.
  */
 
 /** Every endpoint returns { status, message, data }. */

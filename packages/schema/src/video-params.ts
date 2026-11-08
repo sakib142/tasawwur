@@ -11,11 +11,11 @@ import {
 } from "./enums.ts";
 
 /**
- * Port of VideoParams (app/models/schema.py, MoneyPrinterTurbo v1.3.10).
+ * Parameters for a single generation request.
  *
- * Field names are deliberately snake_case: this is the request body the Python
- * API accepts today, and Stage 1 ships a TypeScript GUI against that running
- * engine. Renaming here would buy a translation layer we'd carry forever.
+ * Field names are snake_case to match the rendering contract on the wire.
+ * Renaming them here would buy a translation layer at every boundary, so the
+ * contract spelling wins.
  */
 /** Port of MaterialInfo. Used for the "local" video source. */
 export const MaterialInfo = z.object({
