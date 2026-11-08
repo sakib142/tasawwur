@@ -75,6 +75,9 @@ cp apps/web/.env.example apps/web/.env.local   # then edit it
 pnpm dev                                        # http://localhost:3000
 ```
 
+Then open **Settings** and paste a [Pixabay API key](https://pixabay.com/api/docs/) —
+free, instant, no card. That one key powers both footage search and the term checker.
+
 ### Rendering
 
 Until the renderer is built, tasawwur delegates rendering to an external engine over
@@ -183,7 +186,6 @@ Measured while testing output, and worth getting right the first time:
 - Progress polls every 2 seconds; the engine's richer per-clip logs are not streamed yet.
 - No task history — closing the tab loses the UI's view of a render, though the file
   still lands on disk.
-- Settings have an API but no UI.
 - Engine task state is in-memory, so it does not survive a restart.
 
 ## Licence

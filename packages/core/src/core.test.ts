@@ -37,6 +37,17 @@ describe("settings", () => {
     expect(Settings.safeParse({ videoSource: "youtube" }).success).toBe(false);
   });
 
+  it("keeps a stored key when the update omits it", async () => {
+    // The settings form cannot show a stored key, so it sends the field only
+    // when the user typed a new one. An omitted key must mean "leave it",
+    // never "clear it".
+    await writeSettings({ pixabayApiKey: "stored-key" });
+    await writeSettings({ videoSource: "local" });
+    const after = await readSettings();
+    expect(after.pixabayApiKey).toBe("stored-key");
+    expect(after.videoSource).toBe("local");
+  });
+
   it("never exposes API keys, only whether they are set", () => {
     const r = redact(Settings.parse({ pixabayApiKey: "secret", pexelsApiKey: "" }));
     expect(r).not.toHaveProperty("pixabayApiKey");
