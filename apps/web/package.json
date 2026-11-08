@@ -10,12 +10,13 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@tasawwur/api-client": "workspace:*",
+    "@tasawwur/core": "workspace:*",
+    "@tasawwur/schema": "workspace:*",
     "next": "16.4.5",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "@tasawwur/schema": "workspace:*",
-    "@tasawwur/api-client": "workspace:*",
-    "@tasawwur/core": "workspace:*"
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@tailwindcss/turbopack": "^4",

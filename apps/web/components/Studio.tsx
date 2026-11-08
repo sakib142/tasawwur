@@ -5,6 +5,7 @@ import { TasawwurClient, ApiError } from "@tasawwur/api-client";
 import { TaskState, type TaskStatusData, type VideoParamsInput } from "@tasawwur/schema";
 import { PRESETS, VOICES, stageLabel } from "@/lib/presets";
 import { useCatalogue } from "@/lib/useCatalogue";
+import { TermCheck } from "@/components/TermCheck";
 
 // Same-origin: the proxy route forwards to the engine.
 const api = new TasawwurClient({ baseUrl: "/api/engine" });
@@ -149,6 +150,15 @@ export function Studio() {
             className={inputClass}
           />
         </Field>
+
+        {/* Seconds of narration, very roughly: ~2.6 words per second. */}
+        <TermCheck
+          terms={terms}
+          aspect={String(preset.params.video_aspect ?? "9:16")}
+          narrationSeconds={
+            script.trim() ? Math.round(script.trim().split(/\s+/).length / 2.6) : undefined
+          }
+        />
 
         <Field
           label="Voice"
