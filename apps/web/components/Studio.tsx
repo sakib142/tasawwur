@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { TasawwurClient, ApiError } from "@tasawwur/api-client";
-import { TaskState, type TaskStatusData, type VideoParamsInput } from "@tasawwur/schema";
-import { PRESETS, VOICES, stageLabel } from "@/lib/presets";
+import type { VideoParamsInput } from "@tasawwur/schema";
+import { PRESETS, VOICES } from "@/lib/presets";
 import { useCatalogue } from "@/lib/useCatalogue";
 import { TermCheck } from "@/components/TermCheck";
+import { ActivityLog } from "@/components/ActivityLog";
+import { useTaskStream } from "@/lib/useTaskStream";
 
 // Same-origin: the proxy route forwards to the engine.
 const api = new TasawwurClient({ baseUrl: "/api/engine" });
@@ -20,9 +22,12 @@ export function Studio() {
   const [voice, setVoice] = useState(PRESETS[0]!.params.voice_name ?? "");
 
   const [phase, setPhase] = useState<Phase>("idle");
-  const [status, setStatus] = useState<TaskStatusData | null>(null);
+  const [taskId, setTaskId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const abort = useRef<AbortController | null>(null);
+
+  // One event stream replaces the poll loop. Everything the output panel shows
+  // is derived from it.
+  const stream = useTaskStream(taskId);
 
   const preset = PRESETS.find((p) => p.id === presetId)!;
 
@@ -44,15 +49,12 @@ export function Studio() {
     if (!touchedVoice.current) setVoice(preset.params.voice_name ?? "");
   }, [preset]);
 
-  useEffect(() => () => abort.current?.abort(), []);
-
   const canSubmit = (subject.trim() || script.trim()) && phase !== "running";
 
   const submit = useCallback(async () => {
     setPhase("running");
     setError(null);
-    setStatus(null);
-    abort.current = new AbortController();
+    setTaskId(null);
 
     const params: VideoParamsInput = {
       ...preset.params,
@@ -65,19 +67,7 @@ export function Studio() {
     };
 
     try {
-      const id = await api.createVideo(params);
-      const final = await api.waitForTask(id, {
-        intervalMs: 2000,
-        signal: abort.current.signal,
-        onProgress: setStatus,
-      });
-      setStatus(final);
-      if (final.state === TaskState.failed) {
-        setPhase("error");
-        setError(final.error ?? `Failed during the ${final.failed_stage ?? "unknown"} stage.`);
-      } else {
-        setPhase("done");
-      }
+      setTaskId(await api.createVideo(params));
     } catch (e) {
       setPhase("error");
       setError(
@@ -90,8 +80,18 @@ export function Studio() {
     }
   }, [preset, voice, font, subject, script, terms]);
 
-  const videoUri = status?.videos?.[0];
-  const progress = status?.progress ?? 0;
+  useEffect(() => {
+    if (!stream.finished) return;
+    if (stream.error) {
+      setPhase("error");
+      setError(stream.error);
+    } else {
+      setPhase("done");
+    }
+  }, [stream.finished, stream.error]);
+
+  const videoUri = stream.videos?.[0];
+  const progress = stream.progress;
 
   return (
     <div className="grid gap-8 lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)]">
@@ -215,7 +215,7 @@ export function Studio() {
             <button
               type="button"
               onClick={() => {
-                abort.current?.abort();
+                setTaskId(null);
                 setPhase("idle");
               }}
               className="text-sm text-stone-500 underline underline-offset-4 hover:text-stone-800 dark:hover:text-stone-200"
@@ -239,8 +239,11 @@ export function Studio() {
         {phase === "running" && (
           <div className="flex flex-col gap-3 rounded-lg border border-stone-200 p-5 dark:border-stone-800">
             <div className="flex items-baseline justify-between">
-              <span className="text-sm font-medium">{stageLabel(progress)}</span>
-              <span className="font-mono text-sm tabular-nums text-stone-500">{progress}%</span>
+              <span className="text-sm font-medium">{stream.stageLabel}</span>
+              <span className="font-mono text-sm tabular-nums text-stone-500">
+                {stream.stageSeconds > 20 && `${stream.stageSeconds}s · `}
+                {progress}%
+              </span>
             </div>
             <div
               className="h-1.5 overflow-hidden rounded-full bg-stone-200 dark:bg-stone-800"
@@ -254,6 +257,7 @@ export function Studio() {
                 style={{ width: `${Math.max(progress, 3)}%` }}
               />
             </div>
+            <ActivityLog events={stream.events} />
             <p className="text-xs text-stone-500">
               Rendering is CPU-bound and runs on your machine. You can leave this page open.
             </p>
@@ -262,9 +266,7 @@ export function Studio() {
 
         {phase === "error" && (
           <div className="rounded-lg border border-red-300 bg-red-50 p-5 text-sm dark:border-red-900 dark:bg-red-950/40">
-            <p className="font-medium text-red-900 dark:text-red-200">
-              {status?.failed_stage ? `Failed while ${status.failed_stage}` : "Could not generate"}
-            </p>
+            <p className="font-medium text-red-900 dark:text-red-200">Could not generate</p>
             <p className="mt-1 text-red-800 dark:text-red-300">{error}</p>
           </div>
         )}
@@ -285,15 +287,9 @@ export function Studio() {
               >
                 Download
               </a>
-              <span className="font-mono text-xs text-stone-500">{status?.task_id}</span>
+              <span className="font-mono text-xs text-stone-500">{taskId}</span>
             </div>
-            {status?.warnings?.length ? (
-              <ul className="rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-                {status.warnings.map((w, i) => (
-                  <li key={i}>{String(w.code)}</li>
-                ))}
-              </ul>
-            ) : null}
+            <ActivityLog events={stream.events} />
           </div>
         )}
       </section>

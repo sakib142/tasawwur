@@ -113,9 +113,10 @@ is structural: **as each service is reimplemented in TypeScript, its route stops
 proxied and becomes a real handler.** The GUI never changes. The final step is deleting
 the last proxy branch.
 
-Two routes are already implemented here and never leave the process: `/api/voices`
-fetches Microsoft's public Edge TTS catalogue directly, and `/api/settings` owns its
-own store.
+Four routes are already implemented here and never leave the process: `/api/voices` fetches
+Microsoft's public Edge TTS catalogue directly, `/api/probe` searches stock footage and
+scores search terms, `/api/settings` owns its own store, and
+`/api/tasks/[id]/events` streams task progress over SSE.
 
 ### The pipeline
 
@@ -183,7 +184,6 @@ Measured while testing output, and worth getting right the first time:
 ## Known rough edges
 
 - Rendering is not implemented yet; an external engine is required.
-- Progress polls every 2 seconds; the engine's richer per-clip logs are not streamed yet.
 - No task history — closing the tab loses the UI's view of a render, though the file
   still lands on disk.
 - Engine task state is in-memory, so it does not survive a restart.
