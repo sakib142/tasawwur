@@ -56,9 +56,15 @@ describe("extractStringArray", () => {
     expect(extractStringArray('["  cat paw  "]')).toEqual(["cat paw"]);
   });
 
+  it("recovers the array when a model wraps it in an object", () => {
+    // Returning {"terms": [...]} instead of a bare array is a common
+    // deviation. Recovering from it beats failing the whole request.
+    expect(extractStringArray('{"terms":["a","b"]}')).toEqual(["a", "b"]);
+  });
+
   it("returns null when there is nothing usable", () => {
     expect(extractStringArray("no array here")).toBeNull();
     expect(extractStringArray("[]")).toBeNull();
-    expect(extractStringArray('{"terms":["a"]}')).toBeNull();
+    expect(extractStringArray('["", "  "]')).toBeNull();
   });
 });
