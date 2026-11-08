@@ -1,0 +1,23 @@
+{
+  "name": "tasawwur",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Generate narrated short videos from a topic or a script.",
+  "license": "MIT",
+  "packageManager": "pnpm@10.15.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @tasawwur/web dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "api": "echo 'Run the Python engine: see docs/RUNNING.md'"
+  },
+  "devDependencies": {
+    "vitest": "^5.1.0"
+  }
+}
