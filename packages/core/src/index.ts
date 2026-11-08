@@ -6,3 +6,4 @@ export * from "./probe.ts";
 export * from "./events.ts";
 export * from "./speech/index.ts";
 export * from "./captions.ts";
+export * from "./llm/index.ts";

@@ -18,6 +18,20 @@ export const Settings = z.object({
   voiceLocales: z.array(z.string()).default(["en"]),
   defaultVoice: z.string().default("en-US-AvaNeural-Female"),
   defaultFont: z.string().default("BeVietnamPro-Bold.ttf"),
+  /**
+   * Who writes the script when you give only a topic.
+   *
+   * Both options are free to run. "claude-cli" spawns the locally signed-in
+   * Claude CLI, which uses a subscription rather than a metered key; "ollama"
+   * runs a model on this machine. There is deliberately no pay-per-token
+   * option — staying free to run is a constraint, not a preference.
+   */
+  llmProvider: z.enum(["claude-cli", "ollama"]).default("claude-cli"),
+  /** Blank means search the usual locations. */
+  claudeCliPath: z.string().default(""),
+  ollamaUrl: z.string().default("http://127.0.0.1:11434"),
+  ollamaModel: z.string().default("llama3.2"),
+
   /** Stock footage provider. Pixabay and Pexels are free; Pexels needs a key. */
   videoSource: z.enum(["pixabay", "pexels", "local"]).default("pixabay"),
   pexelsApiKey: z.string().default(""),
