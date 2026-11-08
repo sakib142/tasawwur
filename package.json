@@ -4,7 +4,6 @@
   "private": true,
   "description": "Generate narrated short videos from a topic or a script.",
   "license": "MIT",
-  "packageManager": "pnpm@12.18.0",
   "engines": {
     "node": ">=20"
   },

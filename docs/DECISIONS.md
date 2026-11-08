@@ -96,8 +96,14 @@ tarball:
 `NODE_OPTIONS=--max-old-space-size` does not help — the crash is inside a worker
 thread. npm cannot be used as a substitute inside a pnpm workspace: it rejects
 the `workspace:` protocol, and fails at the root on pnpm's symlink layout.
-pnpm 12.18 installs it in 15 seconds. The `packageManager` field is set
-accordingly.
+pnpm 12.18 installs it in 15 seconds, via `npx pnpm@12.18.0 install`.
+
+**Do not pin it with `packageManager`.** pnpm 12 changed its bin layout to a
+native wrapper, and the corepack bundled with Node 24.4.1 still expects
+`bin/pnpm.cjs`. Pinning it makes corepack fail to launch pnpm at all —
+`Cannot find module .../bin/pnpm.cjs` — which breaks every script in the repo.
+Requiring pnpm 12 is documented in the README instead, and the optional install
+is run through `npx` so it needs no global change.
 
 **What Kokoro does not provide: word timings.** It returns audio and a sample
 rate, nothing more. Captions are therefore estimated from word length, which is

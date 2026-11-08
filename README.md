@@ -66,7 +66,7 @@ Write the script to fit terms that pass the probe, not the other way round.
 
 ## Quick start
 
-**Requirements:** Node 20+, **pnpm 12+**, ffmpeg, and — until the renderer lands — a
+**Requirements:** Node 20+, pnpm 10+, ffmpeg, and — until the renderer lands — a
 rendering engine reachable over HTTP (see [Rendering](#rendering)).
 
 ```bash
@@ -84,12 +84,16 @@ Narration can run locally, with no account and no network after the first
 download:
 
 ```bash
-pnpm add kokoro-js --filter @tasawwur/core
+npx pnpm@12 install          # installs the optional kokoro-js
 ```
 
 This pulls the ONNX runtime (~400MB) and fetches a 97MB model on first use,
-which is why it is optional rather than required. It needs **pnpm 12 or newer** —
-pnpm 10 runs out of memory extracting the runtime.
+which is why it is optional rather than required.
+
+It needs **pnpm 12 or newer**: pnpm 10 runs out of memory extracting the
+runtime. Run it through `npx` as above rather than pinning `packageManager` —
+corepack on Node 24 cannot launch pnpm 12, and pinning it breaks every script in
+the repo.
 
 Note that Kokoro reports no word timings, so captions are estimated from word
 length. Good for sentence captions; not accurate enough for word-by-word ones.
