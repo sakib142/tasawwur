@@ -74,3 +74,33 @@ from that break mid-phrase on length alone. `alignCuesToText` matches the
 timeline back onto the script so the written form wins. Measured on a finished
 108-word render, this turned four length-truncated captions into twelve that
 break at sentences, with no text lost.
+
+
+---
+
+## Local speech is optional, and pnpm must be 12 or newer to install it
+
+**Decision.** `kokoro-js` is an `optionalDependency`. The project runs without it.
+
+**Why.** It pulls the ONNX runtime, roughly 400MB on disk — too much to force on
+someone cloning the repo to read the code or use the hosted path. The provider
+imports it dynamically and reports `available() === false` when absent, so
+nothing breaks; local speech simply is not offered.
+
+**pnpm 10.15 cannot install it.** It runs out of heap extracting the runtime
+tarball:
+
+    FATAL ERROR: invalid array length Allocation failed - JavaScript heap out of memory
+      at Builtins_TypedArrayPrototypeJoin
+
+`NODE_OPTIONS=--max-old-space-size` does not help — the crash is inside a worker
+thread. npm cannot be used as a substitute inside a pnpm workspace: it rejects
+the `workspace:` protocol, and fails at the root on pnpm's symlink layout.
+pnpm 12.18 installs it in 15 seconds. The `packageManager` field is set
+accordingly.
+
+**What Kokoro does not provide: word timings.** It returns audio and a sample
+rate, nothing more. Captions are therefore estimated from word length, which is
+fine for sentence captions and visibly wrong for word-by-word ones. This is why
+`SpeechProvider` declares `wordTimings` rather than assuming it — anything
+offering a caption mode can see which it is dealing with and say so.

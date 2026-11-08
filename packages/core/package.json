@@ -18,5 +18,8 @@
   "devDependencies": {
     "@types/node": "^20.19.43",
     "typescript": "^5.7.0"
+  },
+  "optionalDependencies": {
+    "kokoro-js": "^1.2.1"
   }
 }
