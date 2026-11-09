@@ -32,6 +32,21 @@ describe("settings", () => {
     expect(await readSettings()).toEqual(DEFAULT_SETTINGS);
   });
 
+  it("drops a stored voice the speech model cannot use", async () => {
+    // Settings written before the switch hold ids from a provider we no longer
+    // synthesise with. They parse fine and then fail silently at render time.
+    await writeFile(
+      process.env.TASAWWUR_SETTINGS!,
+      JSON.stringify({ defaultVoice: "en-GB-SoniaNeural-Female" }),
+    );
+    expect((await readSettings()).defaultVoice).toBe("af_heart");
+  });
+
+  it("keeps a stored voice it recognises", async () => {
+    await writeSettings({ defaultVoice: "am_michael" });
+    expect((await readSettings()).defaultVoice).toBe("am_michael");
+  });
+
   it("rejects invalid values", () => {
     expect(Settings.safeParse({ engineUrl: "not-a-url" }).success).toBe(false);
     expect(Settings.safeParse({ videoSource: "youtube" }).success).toBe(false);
@@ -105,3 +120,4 @@ describe("voice catalogue", () => {
     expect(new Set(KOKORO_VOICES.map((v) => v.id)).size).toBe(KOKORO_VOICES.length);
   });
 });
+

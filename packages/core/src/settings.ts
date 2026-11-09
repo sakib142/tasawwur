@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { z } from "zod";
+import { DEFAULT_VOICE, KOKORO_VOICES } from "./speech/voices.ts";
 
 /**
  * Application settings, owned by this project.
@@ -55,12 +56,25 @@ export function settingsPath(): string {
   return join(process.env.XDG_CONFIG_HOME ?? join(home, ".config"), "tasawwur", "settings.json");
 }
 
+/**
+ * Drops a stored voice the speech model cannot use.
+ *
+ * Earlier versions saved ids from a provider this no longer synthesises with.
+ * Those ids are strings like any other, so they parse happily and then fail
+ * silently at render time — the very thing that made the old voice picker
+ * misleading. Anything unrecognised falls back to the default instead.
+ */
+function usableVoice(voice: string): string {
+  return KOKORO_VOICES.some((v) => v.id === voice) ? voice : DEFAULT_VOICE;
+}
+
 /** Missing or corrupt files fall back to defaults rather than failing the app. */
 export async function readSettings(): Promise<Settings> {
   try {
     const raw = await readFile(settingsPath(), "utf8");
     const parsed = Settings.safeParse(JSON.parse(raw));
-    return parsed.success ? parsed.data : DEFAULT_SETTINGS;
+    if (!parsed.success) return DEFAULT_SETTINGS;
+    return { ...parsed.data, defaultVoice: usableVoice(parsed.data.defaultVoice) };
   } catch {
     return DEFAULT_SETTINGS;
   }
