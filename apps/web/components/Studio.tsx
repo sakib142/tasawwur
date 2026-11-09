@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiError, TasawwurClient } from "@tasawwur/api-client";
 import { ActivityLog } from "@/components/ActivityLog";
 import { TermCheck } from "@/components/TermCheck";
+import { Storyboard, type Board } from "@/components/Storyboard";
 import { AudioSection } from "@/components/sections/AudioSection";
 import { ScriptSection } from "@/components/sections/ScriptSection";
 import { SubtitleSection } from "@/components/sections/SubtitleSection";
@@ -33,6 +34,21 @@ export function Studio() {
   const [error, setError] = useState<string | null>(null);
   const [writing, setWriting] = useState<"script" | "terms" | null>(null);
   const [writeError, setWriteError] = useState<string | null>(null);
+
+  const [board, setBoard] = useState<Board | null>(null);
+  const [boardError, setBoardError] = useState<string | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [committing, setCommitting] = useState<{
+    index: number;
+    total: number;
+    label: string;
+  } | null>(null);
+  /**
+   * What the storyboard was built against. If the terms or clip length change
+   * afterwards, the arrangement no longer matches the settings and silently
+   * rendering it would be worse than not offering this at all.
+   */
+  const [boardFor, setBoardFor] = useState<string | null>(null);
 
   const stream = useTaskStream(taskId);
   const preset = PRESETS.find((p) => p.id === presetId)!;
@@ -117,6 +133,103 @@ export function Studio() {
       setWriting(null);
     }
   }, [params.video_script, writeTerms]);
+
+  const termsText =
+    typeof params.video_terms === "string" ? params.video_terms : "";
+  const boardKey = `${termsText}|${params.video_clip_duration}|${params.video_aspect}`;
+  const boardStale = board !== null && boardFor !== boardKey;
+
+  const previewClips = useCallback(async () => {
+    setPreviewing(true);
+    setBoardError(null);
+    try {
+      const res = await fetch("/api/storyboard", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          terms: termsText.split(",").map((t) => t.trim()).filter(Boolean),
+          script: params.video_script,
+          clipDuration: params.video_clip_duration,
+          aspect: params.video_aspect,
+        }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        setBoardError(body.detail ?? body.error ?? "Could not preview clips.");
+        return;
+      }
+      setBoard(body);
+      setBoardFor(boardKey);
+    } catch {
+      setBoardError("Could not reach the server.");
+    } finally {
+      setPreviewing(false);
+    }
+  }, [termsText, params.video_script, params.video_clip_duration, params.video_aspect, boardKey]);
+
+  /** Download the arranged clips, then render exactly those. */
+  const renderBoard = useCallback(async () => {
+    if (!board) return;
+    setBoardError(null);
+    setCommitting({ index: 0, total: board.shots.length, label: "" });
+
+    try {
+      const res = await fetch("/api/storyboard/commit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clips: board.shots.map((s) => ({ url: s.clip.url, label: s.term })),
+        }),
+      });
+      if (!res.body) throw new Error("No response from the server.");
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let materials: string[] | null = null;
+
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          const event = JSON.parse(line);
+          if (event.type === "progress") setCommitting(event);
+          else if (event.type === "error") throw new Error(event.message);
+          else if (event.type === "done") materials = event.materials;
+        }
+      }
+
+      if (!materials?.length) throw new Error("No clips were prepared.");
+
+      setCommitting(null);
+      setPhase("running");
+      setError(null);
+      setTaskId(null);
+      // Local source in sequential order is what makes the arrangement
+      // authoritative — the renderer picks nothing of its own.
+      setTaskId(
+        await api.createVideo({
+          ...params,
+          video_source: "local",
+          video_concat_mode: "sequential",
+          video_count: 1,
+          video_materials: materials.map((url) => ({
+            provider: "local",
+            url,
+            duration: 0,
+          })),
+        }),
+      );
+      setBoard(null);
+    } catch (e) {
+      setCommitting(null);
+      setBoardError(e instanceof Error ? e.message : "Could not prepare the clips.");
+    }
+  }, [board, params]);
 
   const canSubmit =
     Boolean(params.video_subject.trim() || params.video_script.trim()) && phase !== "running";
@@ -243,7 +356,37 @@ export function Studio() {
           />
         </div>
 
-        <div className="flex items-center gap-3">
+        {board && (
+          <div className="flex flex-col gap-2">
+            {boardStale && (
+              <p className="text-xs text-amber-700 dark:text-amber-500">
+                The settings changed after this was built, so it no longer matches. Preview
+                again before rendering.
+              </p>
+            )}
+            <Storyboard
+              board={board}
+              onChange={setBoard}
+              onClose={() => setBoard(null)}
+              onRender={renderBoard}
+              committing={committing}
+            />
+          </div>
+        )}
+
+        {boardError && (
+          <p className="text-xs text-red-700 dark:text-red-400">{boardError}</p>
+        )}
+
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={previewClips}
+            disabled={!termsText.trim() || previewing || phase === "running"}
+            className="rounded-md border border-stone-300 px-4 py-2.5 text-sm transition-colors hover:border-stone-400 disabled:cursor-not-allowed disabled:opacity-40 dark:border-stone-700 dark:hover:border-stone-500"
+          >
+            {previewing ? "Finding clips…" : board ? "Preview again" : "Preview clips"}
+          </button>
           <button
             type="button"
             onClick={submit}

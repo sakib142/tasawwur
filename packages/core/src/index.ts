@@ -3,6 +3,7 @@ export * from "./fonts.ts";
 export * from "./settings.ts";
 export * from "./pixabay.ts";
 export * from "./probe.ts";
+export * from "./storyboard.ts";
 export * from "./events.ts";
 export * from "./speech/index.ts";
 export * from "./captions.ts";

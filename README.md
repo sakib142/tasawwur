@@ -152,6 +152,19 @@ subject ──LLM──> script ──LLM──> keywords ──> stock search �
 The word-boundary timeline returned by Edge TTS is the keystone: it makes
 word-level captions free and perfectly synced, with nothing to transcribe afterwards.
 
+## Seeing the clips before rendering
+
+A render takes minutes, and until it finishes you cannot see what footage was chosen.
+**Preview clips** searches and shows every clip that would be used, in the order it would
+appear, with thumbnails — nothing is downloaded at this point.
+
+From there you can reorder, remove, or swap a clip for another result the same keyword
+returned. Rendering then uses exactly that arrangement: the clips are handed over as local
+materials in sequential order, so the renderer picks nothing of its own.
+
+Selection prefers contributors it has not used yet, and round-robins across the search
+terms so the footage follows the script rather than exhausting one keyword first.
+
 ## Development
 
 ```bash
