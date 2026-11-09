@@ -144,3 +144,27 @@ graph where a mistake would be invisible until someone watched the video.
 One detail worth keeping: canvas strokes are centred on the glyph edge, so half
 the width falls inside the letter. The stroke width is doubled when drawing so
 the visible outline matches what was asked for.
+
+
+---
+
+## Caption positions anchor an edge, not a fraction of the height
+
+**Decision.** `bottom` puts the block's *bottom edge* at 95% of the frame height,
+`top` puts its *top edge* at 5%, and the others anchor similarly. The block is
+not centred at a fraction of the height.
+
+**Why.** Captions vary in line count. Centring a block at, say, 86% of the
+height puts a one-line caption and a three-line caption in visibly different
+places relative to the screen edge — the taller one drifts toward the middle.
+Anchoring keeps the margin constant, which is what the eye actually reads.
+
+Found by comparing output against the reference implementation: at one sample
+our caption sat noticeably lower, and the cause was this difference in model
+rather than a font or size mismatch.
+
+**Measured afterwards.** Our bottom edge lands at row 1823 of 1920, against the
+rule's 1824. The reference lands at 1798 — 26px higher — because its text clips
+carry font line-height padding and it compensates by centring on visible pixels
+inside that padding. 1.4% of frame height, and ours is the more literal reading
+of the rule.

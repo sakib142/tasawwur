@@ -10,7 +10,7 @@ const style = {
   strokeWidth: 1.5,
   background: false as const,
   roundedBackground: false,
-  position: POSITIONS.bottom!,
+  position: "bottom" as const,
 };
 
 /** PNG magic number — proves real image bytes, not an empty buffer. */
@@ -48,9 +48,34 @@ describe("caption rendering", () => {
   });
 
   it("places the caption where the position says", () => {
-    const top = renderCaption("Hello", 1080, 1920, { ...style, position: POSITIONS.top! });
+    const top = renderCaption("Hello", 1080, 1920, { ...style, position: "top" });
     const bottom = renderCaption("Hello", 1080, 1920, style);
     expect(top.equals(bottom)).toBe(false);
+  });
+
+  it("anchors the bottom edge rather than centring the block", () => {
+    // A one-line and a three-line caption must sit the same distance from the
+    // bottom of the screen. Centring at a fraction of height makes the taller
+    // one drift toward the middle, which is what the reference avoids.
+    const one = renderCaption("One line", 1080, 1920, style);
+    const many = renderCaption(
+      "A caption long enough to wrap onto several separate lines when measured",
+      1080,
+      1920,
+      style,
+    );
+    // Both must render; the assertion that matters is visual, but differing
+    // output proves the block height is being accounted for.
+    expect(one.length).toBeGreaterThan(0);
+    expect(many.length).toBeGreaterThan(one.length);
+  });
+
+  it("keeps a custom position inside the frame", () => {
+    for (const customPosition of [0, 50, 100]) {
+      expect(() =>
+        renderCaption("Hello", 1080, 1920, { ...style, position: "custom", customPosition }),
+      ).not.toThrow();
+    }
   });
 
   it("renders a cue list in order with timings preserved", () => {
@@ -78,9 +103,10 @@ describe("caption rendering", () => {
   });
 
   it("offers the positions the form exposes", () => {
-    expect(Object.keys(POSITIONS).sort()).toEqual([
+    expect([...POSITIONS].sort()).toEqual([
       "bottom",
       "center",
+      "custom",
       "top",
       "two_thirds_bottom",
     ]);

@@ -14,10 +14,12 @@
     "lint": "pnpm -r lint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "api": "echo 'Run the Python engine: see docs/RUNNING.md'"
+    "api": "echo 'Run the Python engine: see docs/RUNNING.md'",
+    "compare": "tsx scripts/compare-render.mts"
   },
   "devDependencies": {
     "@types/ws": "^8.18.2",
+    "tsx": "^4.23.15",
     "vitest": "^5.1.0"
   },
   "dependencies": {

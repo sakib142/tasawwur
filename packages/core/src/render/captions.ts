@@ -20,9 +20,17 @@ export interface CaptionStyle {
   /** A colour, or false for none. */
   background: string | false;
   roundedBackground: boolean;
-  /** Fraction of the frame height where the caption sits, 0 = top. */
-  position: number;
+  position: CaptionPosition;
+  /** Only for "custom": where the block's top edge sits, 0-100. */
+  customPosition?: number;
 }
+
+export type CaptionPosition =
+  | "top"
+  | "center"
+  | "two_thirds_bottom"
+  | "bottom"
+  | "custom";
 
 export interface Frame {
   /** PNG bytes, transparent except for the caption. */
@@ -114,12 +122,7 @@ export function renderCaption(
   const lineHeight = Math.round(style.fontSize * 1.25);
   const blockHeight = lines.length * lineHeight;
 
-  // `position` is where the block sits; clamp so it never runs off-frame.
-  const centre = Math.round(height * style.position);
-  const top = Math.min(
-    Math.max(centre - blockHeight / 2, margin),
-    height - blockHeight - margin,
-  );
+  const top = blockTop(style, height, blockHeight, margin);
 
   if (style.background) {
     const widest = Math.max(...lines.map((l) => ctx.measureText(l).width));
@@ -155,13 +158,56 @@ export function renderCaption(
   return canvas.toBuffer("image/png");
 }
 
-/** Named positions, as a fraction of frame height. */
-export const POSITIONS: Record<string, number> = {
-  top: 0.12,
-  center: 0.5,
-  two_thirds_bottom: 0.72,
-  bottom: 0.86,
-};
+/**
+ * Where the caption block's top edge goes.
+ *
+ * Positions anchor an edge rather than centring the block at a fraction of the
+ * height. That matters because captions vary in line count: anchoring keeps a
+ * one-line and a three-line caption the same distance from the screen edge,
+ * where centring makes the taller one drift toward the middle.
+ */
+function blockTop(
+  style: CaptionStyle,
+  height: number,
+  blockHeight: number,
+  margin: number,
+): number {
+  const available = height - blockHeight;
+  let top: number;
+
+  switch (style.position) {
+    case "top":
+      top = height * 0.05;
+      break;
+    case "center":
+      top = available / 2;
+      break;
+    case "two_thirds_bottom":
+      // Two thirds up from the bottom is one third down from the top.
+      top = available / 3;
+      break;
+    case "custom":
+      top = available * ((style.customPosition ?? 70) / 100);
+      break;
+    case "bottom":
+    default:
+      // The bottom edge sits at 95% of the height, leaving room for the
+      // home indicator on a phone.
+      top = height * 0.95 - blockHeight;
+  }
+
+  // Never let it run off the frame, whatever was asked for.
+  return Math.round(Math.min(Math.max(top, margin), Math.max(available - margin, margin)));
+}
+
+/** The positions the form offers. */
+export const POSITIONS = [
+  "top",
+  "center",
+  "two_thirds_bottom",
+  "bottom",
+  "custom",
+] as const;
 
 export function renderCaptions(
   cues: Cue[],
