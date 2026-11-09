@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@napi-rs/canvas": "^1.1.0",
     "@tasawwur/schema": "workspace:*",
     "zod": "^3.25.0"
   },

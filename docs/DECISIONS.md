@@ -110,3 +110,37 @@ rate, nothing more. Captions are therefore estimated from word length, which is
 fine for sentence captions and visibly wrong for word-by-word ones. This is why
 `SpeechProvider` declares `wordTimings` rather than assuming it — anything
 offering a caption mode can see which it is dealing with and say so.
+
+
+---
+
+## Captions are drawn by us, not by ffmpeg
+
+**Decision.** Each caption is rendered to a transparent PNG and composited with
+ffmpeg's `overlay`. ffmpeg never draws text.
+
+**Why.** Not a preference — a requirement here. The installed ffmpeg 8.1 has
+neither `libass` nor `drawtext`:
+
+    subtitles  NOT AVAILABLE
+    ass        NOT AVAILABLE
+    drawtext   NOT AVAILABLE
+    overlay    available
+
+Homebrew's build omits both, and depending on which text filters a given ffmpeg
+happens to include is a bad foundation for something other people will install.
+
+**What it buys beyond necessity.** Identical output on every machine, whatever
+ffmpeg was built with. Exact control of wrapping, because lines are broken on
+measured width for the actual font file rather than guessed. And fonts load from
+an explicit path instead of a fontconfig name, so the face is the one chosen
+rather than whatever the system substitutes.
+
+**How.** `@napi-rs/canvas` — prebuilt, no node-gyp, and the same role Pillow
+plays on the Python side. Captions are drawn at full frame size so compositing
+is a plain `overlay=0:0`, with no per-cue position arithmetic in the filter
+graph where a mistake would be invisible until someone watched the video.
+
+One detail worth keeping: canvas strokes are centred on the glyph edge, so half
+the width falls inside the letter. The stroke width is doubled when drawing so
+the visible outline matches what was asked for.
