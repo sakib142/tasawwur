@@ -3,6 +3,11 @@ import type { VideoParamsInput } from "@tasawwur/schema";
 /**
  * Starting points derived from what actually produced good output in testing.
  *
+ * A preset SEEDS the form rather than locking it: selecting one fills the
+ * controls, and every one of them stays editable afterwards. Presets that
+ * silently controlled a dozen hidden settings were indistinguishable from
+ * buttons that did nothing.
+ *
  * The lesson from those runs: footage quality is governed by keyword choice,
  * not by render settings. Terms here were chosen because Pixabay's vertical
  * library genuinely covers them with clips from *many different creators* —

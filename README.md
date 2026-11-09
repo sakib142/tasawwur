@@ -180,7 +180,7 @@ If that fails, the GUI and the engine have drifted. Fix the drift — don't rela
 | Milestone | Scope | Status |
 |---|---|---|
 | Foundation | Monorepo, schema, typed contract | **done** |
-| Interface | GUI, voices, fonts, settings | **in progress** |
+| Interface | GUI, voices, fonts, settings, full creation form | **in progress** |
 | Services | Script and keyword writing, stock search, speech | **done** |
 | Renderer | ffmpeg filter graphs, captions, mixing | not started |
 | Standalone | No external engine required | not started |
