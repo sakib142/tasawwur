@@ -2,6 +2,7 @@
 
 import { Field, Section, Select, Slider, Toggle } from "@/components/ui/Form";
 import type { Params } from "@/lib/useVideoParams";
+import { LocalMaterials } from "./LocalMaterials.tsx";
 
 /**
  * Video Settings — shape, pacing and footage handling.
@@ -13,10 +14,13 @@ export function VideoSection({
   params,
   set,
   musicFiles,
+  sources,
 }: {
   params: Params;
   set: <K extends keyof Params>(k: K, v: Params[K]) => void;
   musicFiles: string[];
+  /** Footage sources that are actually usable — a missing key disables one. */
+  sources: ReadonlyArray<{ value: string; label: string; ready: boolean }>;
 }) {
   const summary = [
     params.video_aspect,
@@ -28,6 +32,26 @@ export function VideoSection({
 
   return (
     <Section title="Video" summary={summary}>
+      <Field
+        label="Footage source"
+        warning={
+          sources.find((s) => s.value === params.video_source)?.ready === false
+            ? "This source has no API key yet. Add one in Settings, or pick another."
+            : null
+        }
+      >
+        <Select
+          value={params.video_source}
+          onChange={(v) => set("video_source", v)}
+          options={sources.map((s) => ({
+            value: s.value,
+            label: s.ready ? s.label : `${s.label} — needs a key`,
+          }))}
+        />
+      </Field>
+
+      {params.video_source === "local" && <LocalMaterials params={params} set={set} />}
+
       <Field label="Shape" hint="9:16 for phones, 16:9 for YouTube, 1:1 for feeds.">
         <Select
           value={params.video_aspect}

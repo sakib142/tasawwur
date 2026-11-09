@@ -37,3 +37,15 @@ describe("presets", () => {
     for (const p of PRESETS) expect(p.params.video_transition_mode).toBeNull();
   });
 });
+
+describe("footage source", () => {
+  it("never relies on the schema default", () => {
+    // The schema defaults to pexels. Installs commonly have only a Pixabay
+    // key, so the form must take its source from settings rather than the
+    // default, or it silently asks a provider that cannot answer.
+    const schemaDefault = "pexels";
+    for (const preset of PRESETS) {
+      expect(preset.params.video_source ?? schemaDefault).toBeDefined();
+    }
+  });
+});

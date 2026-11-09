@@ -19,10 +19,15 @@ const api = new TasawwurClient({ baseUrl: "/api/engine" });
 type Phase = "idle" | "running" | "done" | "error";
 
 export function Studio() {
-  const { params, set, presetId, applyPreset, reset, isEdited } = useVideoParams();
+  const { params, set, seed, presetId, applyPreset, reset, isEdited } = useVideoParams();
   const { voices, fonts, loading, error: catalogueError } = useCatalogue();
 
   const [musicFiles, setMusicFiles] = useState<string[]>([]);
+  const [settings, setSettings] = useState<{
+    videoSource?: string;
+    pixabayApiKeySet?: boolean;
+    pexelsApiKeySet?: boolean;
+  } | null>(null);
   const [phase, setPhase] = useState<Phase>("idle");
   const [taskId, setTaskId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +36,19 @@ export function Studio() {
 
   const stream = useTaskStream(taskId);
   const preset = PRESETS.find((p) => p.id === presetId)!;
+
+  // The schema default is a source this install may have no key for, so the
+  // configured one wins. Without this the form silently asks for footage from
+  // a provider that cannot answer.
+  useEffect(() => {
+    fetch("/api/settings")
+      .then((r) => r.json())
+      .then((s) => {
+        setSettings(s);
+        if (s.videoSource) seed({ video_source: s.videoSource });
+      })
+      .catch(() => {});
+  }, [seed]);
 
   useEffect(() => {
     api
@@ -189,7 +207,24 @@ export function Studio() {
         />
 
         <div className="flex flex-col">
-          <VideoSection params={params} set={set} musicFiles={musicFiles} />
+          <VideoSection
+            params={params}
+            set={set}
+            musicFiles={musicFiles}
+            sources={[
+              {
+                value: "pixabay",
+                label: "Pixabay — free stock video",
+                ready: settings?.pixabayApiKeySet ?? false,
+              },
+              {
+                value: "pexels",
+                label: "Pexels — free stock video",
+                ready: settings?.pexelsApiKeySet ?? false,
+              },
+              { value: "local", label: "My own files", ready: true },
+            ]}
+          />
           <AudioSection
             params={params}
             set={set}

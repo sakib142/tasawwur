@@ -207,6 +207,7 @@ Measured while testing output, and worth getting right the first time:
 ## Known rough edges
 
 - Rendering is not implemented yet; an external engine is required.
+- Uploaded footage is kept by the renderer and never cleaned up automatically.
 - No task history — closing the tab loses the UI's view of a render, though the file
   still lands on disk.
 - Script writing requires the Claude CLI; the Ollama option is declared but not
