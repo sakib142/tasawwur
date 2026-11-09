@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ApiError, TasawwurClient } from "@tasawwur/api-client";
 import { ActivityLog } from "@/components/ActivityLog";
 import { TermCheck } from "@/components/TermCheck";
 import { Storyboard, type Board } from "@/components/Storyboard";
@@ -14,16 +13,12 @@ import { useCatalogue } from "@/lib/useCatalogue";
 import { useTaskStream } from "@/lib/useTaskStream";
 import { useVideoParams } from "@/lib/useVideoParams";
 
-// Same-origin: the proxy route forwards to the renderer.
-const api = new TasawwurClient({ baseUrl: "/api/engine" });
-
 type Phase = "idle" | "running" | "done" | "error";
 
 export function Studio() {
   const { params, set, seed, presetId, applyPreset, reset, isEdited } = useVideoParams();
   const { voices, fonts, loading, error: catalogueError } = useCatalogue();
 
-  const [musicFiles, setMusicFiles] = useState<string[]>([]);
   const [settings, setSettings] = useState<{
     videoSource?: string;
     pixabayApiKeySet?: boolean;
@@ -66,12 +61,6 @@ export function Studio() {
       .catch(() => {});
   }, [seed]);
 
-  useEffect(() => {
-    api
-      .listMusic()
-      .then((files) => setMusicFiles(files.filter((f): f is string => typeof f === "string")))
-      .catch(() => setMusicFiles([]));
-  }, []);
 
   useEffect(() => {
     if (!stream.finished) return;
@@ -211,19 +200,18 @@ export function Studio() {
       setTaskId(null);
       // Local source in sequential order is what makes the arrangement
       // authoritative — the renderer picks nothing of its own.
-      setTaskId(
-        await api.createVideo({
-          ...params,
-          video_source: "local",
-          video_concat_mode: "sequential",
-          video_count: 1,
-          video_materials: materials.map((url) => ({
-            provider: "local",
-            url,
-            duration: 0,
-          })),
+      const started = await fetch("/api/videos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          params: { ...params, video_source: "local", video_concat_mode: "sequential", video_count: 1 },
+          // The storyboard already chose and fetched these, in this order.
+          materials,
         }),
-      );
+      });
+      const startedBody = await started.json();
+      if (!started.ok) throw new Error(startedBody.error ?? "Could not start rendering.");
+      setTaskId(startedBody.id);
       setBoard(null);
     } catch (e) {
       setCommitting(null);
@@ -239,16 +227,21 @@ export function Studio() {
     setError(null);
     setTaskId(null);
     try {
-      setTaskId(await api.createVideo(params));
+      const res = await fetch("/api/videos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ params }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? "Could not start rendering.");
+      setTaskId(body.id);
     } catch (e) {
       setPhase("error");
-      setError(
-        e instanceof ApiError || e instanceof Error ? e.message : "Something went wrong.",
-      );
+      setError(e instanceof Error ? e.message : "Something went wrong.");
     }
   }, [params]);
 
-  const videoUri = stream.videos?.[0];
+  const videoReady = stream.job?.state === "done";
 
   return (
     <div className="grid gap-10 lg:grid-cols-[minmax(0,28rem)_minmax(0,1fr)]">
@@ -323,7 +316,6 @@ export function Studio() {
           <VideoSection
             params={params}
             set={set}
-            musicFiles={musicFiles}
             sources={[
               {
                 value: "pixabay",
@@ -424,25 +416,24 @@ export function Studio() {
         {phase === "running" && (
           <div className="flex flex-col gap-3 rounded-lg border border-stone-200 p-5 dark:border-stone-800">
             <div className="flex items-baseline justify-between">
-              <span className="text-sm font-medium">{stream.stageLabel}</span>
+              <span className="text-sm font-medium">{stream.job?.stage ?? "Starting"}</span>
               <span className="font-mono text-sm tabular-nums text-stone-500">
-                {stream.stageSeconds > 20 && `${stream.stageSeconds}s · `}
-                {stream.progress}%
+{stream.job?.progress ?? 0}%
               </span>
             </div>
             <div
               className="h-1.5 overflow-hidden rounded-full bg-stone-200 dark:bg-stone-800"
               role="progressbar"
-              aria-valuenow={stream.progress}
+              aria-valuenow={stream.job?.progress ?? 0}
               aria-valuemin={0}
               aria-valuemax={100}
             >
               <div
                 className="h-full rounded-full bg-stone-900 transition-[width] duration-700 ease-out dark:bg-stone-100"
-                style={{ width: `${Math.max(stream.progress, 3)}%` }}
+                style={{ width: `${Math.max(stream.job?.progress ?? 0, 3)}%` }}
               />
             </div>
-            <ActivityLog events={stream.events} />
+            <ActivityLog entries={stream.log} />
             <p className="text-xs text-stone-500">
               Rendering is CPU-bound and runs on your machine. You can leave this page open.
             </p>
@@ -456,27 +447,27 @@ export function Studio() {
           </div>
         )}
 
-        {phase === "done" && videoUri && (
+        {phase === "done" && videoReady && taskId && (
           <div className="flex flex-col gap-3">
             <video
-              key={videoUri}
+              key={taskId}
               controls
               playsInline
-              src={api.streamUrl(videoUri)}
+              src={`/api/videos/${taskId}/file`}
               className={`w-full rounded-lg bg-black shadow-sm ${
                 params.video_aspect === "16:9" ? "max-w-xl" : "max-w-sm"
               } self-start`}
             />
             <div className="flex gap-4 text-sm">
               <a
-                href={api.streamUrl(videoUri).replace("/stream/", "/download/")}
+                href={`/api/videos/${taskId}/file?download`}
                 className="underline underline-offset-4"
               >
                 Download
               </a>
               <span className="font-mono text-xs text-stone-500">{taskId}</span>
             </div>
-            <ActivityLog events={stream.events} />
+            <ActivityLog entries={stream.log} />
           </div>
         )}
       </section>

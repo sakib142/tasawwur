@@ -10,7 +10,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@tasawwur/api-client": "workspace:*",
     "@tasawwur/core": "workspace:*",
     "@tasawwur/schema": "workspace:*",
     "next": "16.4.5",

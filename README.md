@@ -7,9 +7,9 @@ tasawwur generates narrated short videos from a topic or a script. It writes the
 narration, finds matching stock footage, speaks it aloud, times the captions to the
 voice, and renders a finished MP4 — using only free services.
 
-> **Status: early.** The GUI and service layer are working. Video rendering is not
-> implemented yet and is currently delegated to an external engine over HTTP. See
-> [Roadmap](#roadmap) for exactly what does and does not work today.
+> **Status: it works end to end.** Writing, narration, captions, footage and
+> rendering all run here. Nothing external is required beyond ffmpeg and a free
+> Pixabay key for stock search.
 
 ---
 
@@ -66,8 +66,7 @@ Write the script to fit terms that pass the probe, not the other way round.
 
 ## Quick start
 
-**Requirements:** Node 20+, pnpm 10+, ffmpeg, and — until the renderer lands — a
-rendering engine reachable over HTTP (see [Rendering](#rendering)).
+**Requirements:** Node 20+, pnpm 10+, and ffmpeg.
 
 ```bash
 pnpm install
@@ -97,12 +96,6 @@ the repo.
 
 Note that Kokoro reports no word timings, so captions are estimated from word
 length. Good for sentence captions; not accurate enough for word-by-word ones.
-
-### Rendering
-
-Until the renderer is built, tasawwur delegates rendering to an external engine over
-HTTP. Any service implementing the same REST contract will work — point `ENGINE_URL` at
-it. The contract is defined in [`packages/schema`](./packages/schema/src/api.ts).
 
 ### Environment
 
@@ -193,10 +186,10 @@ If that fails, the GUI and the engine have drifted. Fix the drift — don't rela
 | Milestone | Scope | Status |
 |---|---|---|
 | Foundation | Monorepo, schema, typed contract | **done** |
-| Interface | GUI, voices, fonts, settings, full creation form | **in progress** |
+| Interface | GUI, settings, creation form, storyboard | **done** |
 | Services | Script and keyword writing, stock search, speech | **done** |
-| Renderer | ffmpeg filter graphs, captions, mixing | not started |
-| Standalone | No external engine required | not started |
+| Renderer | ffmpeg filter graphs, captions, mixing | **done** |
+| Standalone | No external engine required | **done** |
 
 The one real constraint is **process lifetime**. Rendering is minutes of CPU and
 gigabytes of temp files, so it needs a long-running worker — it cannot run in a
@@ -219,12 +212,13 @@ Measured while testing output, and worth getting right the first time:
 
 ## Known rough edges
 
-- Rendering is not implemented yet; an external engine is required.
 - Uploaded footage is kept by the renderer and never cleaned up automatically.
 - No task history — closing the tab loses the UI's view of a render, though the file
   still lands on disk.
 - Script writing requires the Claude CLI; the Ollama option is declared but not
   implemented yet.
+- Background music is not wired up yet — the mixer supports it, nothing selects a track.
+- Stock footage must go through **Preview clips**; there is no blind-search path.
 - Engine task state is in-memory, so it does not survive a restart.
 
 ## Licence

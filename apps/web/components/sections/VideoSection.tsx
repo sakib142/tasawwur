@@ -13,12 +13,10 @@ import { LocalMaterials } from "./LocalMaterials.tsx";
 export function VideoSection({
   params,
   set,
-  musicFiles,
   sources,
 }: {
   params: Params;
   set: <K extends keyof Params>(k: K, v: Params[K]) => void;
-  musicFiles: string[];
   /** Footage sources that are actually usable — a missing key disables one. */
   sources: ReadonlyArray<{ value: string; label: string; ready: boolean }>;
 }) {
@@ -168,42 +166,6 @@ export function VideoSection({
         />
       </Field>
 
-      <Field label="Background music">
-        <Select
-          value={params.bgm_type}
-          onChange={(v) => set("bgm_type", v)}
-          options={[
-            { value: "random", label: "Random from the bundled tracks" },
-            { value: "", label: "None" },
-            ...(musicFiles.length
-              ? [{ value: "custom", label: "Pick a specific track" }]
-              : []),
-          ]}
-        />
-      </Field>
-
-      {params.bgm_type === "custom" && musicFiles.length > 0 && (
-        <Field label="Track">
-          <Select
-            value={params.bgm_file}
-            onChange={(v) => set("bgm_file", v)}
-            options={musicFiles.map((f) => ({ value: f, label: f }))}
-          />
-        </Field>
-      )}
-
-      {params.bgm_type !== "" && (
-        <Field label="Music volume" hint="Kept low so it sits under the narration.">
-          <Slider
-            value={params.bgm_volume}
-            onChange={(v) => set("bgm_volume", v)}
-            min={0}
-            max={0.5}
-            step={0.01}
-            format={(v) => `${Math.round(v * 100)}%`}
-          />
-        </Field>
-      )}
     </Section>
   );
 }

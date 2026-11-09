@@ -8,6 +8,8 @@ export * from "./render/ffmpeg.ts";
 export * from "./render/captions.ts";
 export * from "./render/clips.ts";
 export * from "./render/assemble.ts";
+export * from "./pipeline.ts";
+export * from "./jobs.ts";
 export * from "./events.ts";
 export * from "./speech/index.ts";
 export * from "./captions.ts";

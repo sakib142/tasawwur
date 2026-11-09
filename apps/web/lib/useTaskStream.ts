@@ -1,118 +1,78 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
-export interface TaskEvent {
-  type: "stage" | "progress" | "log" | "done" | "error";
-  at: number;
-  stage?: string;
-  label?: string;
-  progress?: number;
-  level?: "info" | "warn";
-  message?: string;
-  videos?: string[];
-  elapsedMs?: number;
+export interface Job {
+  id: string;
+  state: "queued" | "running" | "done" | "failed" | "cancelled";
+  progress: number;
+  stage: string;
+  detail?: string;
+  error?: string;
+  video?: string;
+  durationSeconds?: number;
 }
 
 export interface StreamState {
-  events: TaskEvent[];
-  progress: number;
-  stageLabel: string;
-  /** Seconds spent in the current stage — the long ones are worth showing. */
-  stageSeconds: number;
-  videos: string[] | null;
-  error: string | null;
+  job: Job | null;
+  log: string[];
   finished: boolean;
+  error: string | null;
 }
 
-const INITIAL: StreamState = {
-  events: [],
-  progress: 0,
-  stageLabel: "Starting",
-  stageSeconds: 0,
-  videos: null,
-  error: null,
-  finished: false,
-};
-
 /**
- * Subscribe to a task's event stream.
+ * Follow a render.
  *
- * One EventSource replaces a poll loop. Passing `null` closes any open stream,
- * which is how the caller cancels.
+ * Progress is pushed by the job itself rather than polled — the work runs in
+ * the same process that serves this stream, so there is nothing to poll.
  */
-export function useTaskStream(taskId: string | null): StreamState {
-  const [state, setState] = useState<StreamState>(INITIAL);
-  const stageStarted = useRef<number>(Date.now());
-
-  const push = useCallback((event: TaskEvent) => {
-    setState((prev) => {
-      const next: StreamState = { ...prev, events: [...prev.events, event] };
-
-      switch (event.type) {
-        case "stage":
-          stageStarted.current = event.at;
-          next.stageLabel = event.label ?? prev.stageLabel;
-          next.progress = event.progress ?? prev.progress;
-          break;
-        case "progress":
-          next.progress = event.progress ?? prev.progress;
-          break;
-        case "done":
-          next.videos = event.videos ?? [];
-          next.progress = 100;
-          next.stageLabel = "Done";
-          next.finished = true;
-          break;
-        case "error":
-          next.error = event.message ?? "Something went wrong.";
-          next.finished = true;
-          break;
-      }
-      return next;
-    });
-  }, []);
+export function useTaskStream(jobId: string | null): StreamState {
+  const [job, setJob] = useState<Job | null>(null);
+  const [log, setLog] = useState<string[]>([]);
 
   useEffect(() => {
-    if (!taskId) {
-      setState(INITIAL);
+    if (!jobId) {
+      setJob(null);
+      setLog([]);
       return;
     }
 
-    setState(INITIAL);
-    stageStarted.current = Date.now();
+    setJob(null);
+    setLog([]);
 
-    const source = new EventSource(`/api/tasks/${encodeURIComponent(taskId)}/events`);
+    const source = new EventSource(`/api/videos/${encodeURIComponent(jobId)}/events`);
+
     const handle = (e: MessageEvent) => {
       try {
-        push(JSON.parse(e.data) as TaskEvent);
+        const next = JSON.parse(e.data) as Job;
+        setJob(next);
+        // One line per stage, not per update — the stage name repeats on every
+        // progress tick and a log of duplicates is unreadable.
+        setLog((prev) => {
+          const entry = next.detail ? `${next.stage} — ${next.detail}` : next.stage;
+          return prev[prev.length - 1] === entry ? prev : [...prev, entry];
+        });
       } catch {
-        // Ignore a malformed frame rather than tearing down the stream.
+        // Ignore a malformed frame rather than tearing the stream down.
       }
     };
 
-    for (const type of ["stage", "progress", "log", "done", "error"]) {
+    for (const type of ["progress", "done", "error"]) {
       source.addEventListener(type, handle as EventListener);
     }
-    source.onerror = () => {
-      // The server closes the stream once a task is terminal; EventSource
-      // reports that as an error and would otherwise reconnect forever.
-      source.close();
-    };
+    // The server closes the stream when the job ends; EventSource reports that
+    // as an error and would otherwise reconnect forever.
+    source.onerror = () => source.close();
 
     return () => source.close();
-  }, [taskId, push]);
+  }, [jobId]);
 
-  // Tick the in-stage timer without re-rendering the whole event list.
-  const [, force] = useState(0);
-  useEffect(() => {
-    if (!taskId || state.finished) return;
-    const t = setInterval(() => force((n) => n + 1), 1000);
-    return () => clearInterval(t);
-  }, [taskId, state.finished]);
+  const finished = job?.state === "done" || job?.state === "failed" || job?.state === "cancelled";
 
   return {
-    ...state,
-    stageSeconds: state.finished ? 0 : Math.floor((Date.now() - stageStarted.current) / 1000),
+    job,
+    log,
+    finished: Boolean(finished),
+    error: job?.state === "failed" || job?.state === "cancelled" ? (job.error ?? "Failed.") : null,
   };
 }

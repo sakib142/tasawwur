@@ -3,15 +3,17 @@ import { z } from "zod";
 /**
  * Turn an arranged storyboard into renderable materials.
  *
- * Each clip is fetched from the provider and handed to the renderer's material
- * store, which returns a stable name. Those names, in order, become
- * `video_materials` — and because the render then runs as a local source in
- * sequential mode, the arrangement is used exactly as given.
+ * Each clip is fetched from the provider and written to the material store.
+ * The resulting paths, in order, are what the render uses — so the arrangement
+ * made in the storyboard is exactly what gets produced.
  *
  * Progress streams back per clip: renditions run to 75MB and a whole board can
  * move several hundred, which is long enough that silence reads as a hang.
  */
-const ENGINE_URL = process.env.ENGINE_URL ?? "http://127.0.0.1:8080/api/v1";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join, extname } from "node:path";
+import { randomUUID } from "node:crypto";
+import { materialsDir, probe } from "@tasawwur/core";
 
 const Body = z.object({
   clips: z
@@ -47,24 +49,15 @@ export async function POST(req: Request) {
             throw new Error(`Could not download “${clip.label}” (HTTP ${res.status}).`);
           }
 
-          // The store wants a filename it can take an extension from.
-          const name = new URL(clip.url).pathname.split("/").pop() ?? `clip-${index}.mp4`;
-          const body = new FormData();
-          body.append("file", await res.blob(), name);
-
-          const upload = await fetch(`${ENGINE_URL}/video_materials`, {
-            method: "POST",
-            body,
-            signal: req.signal,
-          });
-          const payload = await upload.json().catch(() => null);
-          const file = payload?.data?.file;
-          if (!upload.ok || typeof file !== "string") {
-            throw new Error(
-              payload?.message ?? `The renderer rejected “${clip.label}”.`,
-            );
-          }
-          stored.push(file);
+          const dir = materialsDir();
+          await mkdir(dir, { recursive: true });
+          const ext = extname(new URL(clip.url).pathname) || ".mp4";
+          const path = join(dir, `${randomUUID()}${ext}`);
+          await writeFile(path, Buffer.from(await res.arrayBuffer()));
+          // Decode before accepting it: a truncated download would otherwise
+          // fail minutes later, mid-render.
+          await probe(path);
+          stored.push(path);
         }
 
         controller.enqueue(frame({ type: "done", materials: stored }));

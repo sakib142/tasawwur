@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { listFonts } from "@tasawwur/core";
+import { fontsDir, listFonts } from "@tasawwur/core";
 
-/** Reads the engine's font directory — see the note in packages/core/src/fonts.ts. */
+/** Fonts ship with the project, so this needs nothing external. */
 export async function GET() {
   try {
-    return NextResponse.json({ fonts: await listFonts() });
+    return NextResponse.json({ fonts: await listFonts(fontsDir()) });
   } catch (cause) {
     return NextResponse.json(
       {
