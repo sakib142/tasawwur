@@ -155,7 +155,7 @@ export async function probe(path: string, ffprobePath = "ffprobe"): Promise<Medi
   }
 }
 
-export interface RunOptions {
+export interface FfmpegOptions {
   signal?: AbortSignal;
   /** Called with ffmpeg's reported position, for progress. */
   onProgress?: (seconds: number) => void;
@@ -168,7 +168,7 @@ export interface RunOptions {
  * stderr is kept but only surfaced on failure: ffmpeg writes its entire
  * progress log there, and dumping it on success buries anything that matters.
  */
-export function ffmpeg(args: string[], opts: RunOptions = {}): Promise<void> {
+export function ffmpeg(args: string[], opts: FfmpegOptions = {}): Promise<void> {
   const { signal, onProgress, timeoutMs = 60 * 60_000 } = opts;
 
   return capabilities().then(
