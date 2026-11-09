@@ -1,4 +1,17 @@
-@import "tailwindcss";
+/*
+ * Sources are listed rather than detected.
+ *
+ * Automatic detection scans the working directory, which includes .next —
+ * whose dev log is appended on every request. Each append re-triggered the
+ * scan, which triggered a rebuild, which reloaded the page, which made another
+ * request: the dev server rebuilt roughly thirty times a second and no client
+ * effect ever ran to completion. Naming the three directories that actually
+ * hold markup ends that, and skips scanning a large build tree besides.
+ */
+@import "tailwindcss" source(none);
+@source "../app";
+@source "../components";
+@source "../lib";
 
 :root {
   --background: #ffffff;

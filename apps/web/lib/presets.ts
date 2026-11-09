@@ -64,7 +64,7 @@ export const PRESETS: Preset[] = [
       subtitle_animation: "none",
       font_size: 55,
       stroke_width: 1.5,
-      voice_name: "en-US-AvaNeural-Female",
+      voice_name: "af_heart",
       voice_rate: 0.95,
       bgm_volume: 0.1,
     },
@@ -85,7 +85,7 @@ export const PRESETS: Preset[] = [
       font_size: 78,
       stroke_width: 3,
       stroke_color: "#1A1A1A",
-      voice_name: "en-US-AnaNeural-Female",
+      voice_name: "af_bella",
       voice_rate: 1,
       bgm_volume: 0.12,
     },
@@ -103,23 +103,13 @@ export const PRESETS: Preset[] = [
       subtitle_animation: "none",
       font_size: 48,
       stroke_width: 1.5,
-      voice_name: "en-US-AvaMultilingualNeural-Female",
+      voice_name: "bf_emma",
       voice_rate: 1,
       bgm_volume: 0.1,
     },
   },
 ];
 
-/** Free, no API key. The engine picks its backend from this string alone. */
-export const VOICES = [
-  { id: "en-US-AvaNeural-Female", label: "Ava — natural, warm" },
-  { id: "en-US-AvaMultilingualNeural-Female", label: "Ava Multilingual — richer, slower to stream" },
-  { id: "en-US-AndrewNeural-Male", label: "Andrew — natural, male" },
-  { id: "en-US-EmmaNeural-Female", label: "Emma — bright" },
-  { id: "en-US-AnaNeural-Female", label: "Ana — child, playful" },
-  { id: "en-AU-NatashaNeural-Female", label: "Natasha — Australian" },
-  { id: "en-GB-SoniaNeural-Female", label: "Sonia — British" },
-];
 
 /** Progress checkpoints the engine writes, used to name the current stage. */
 export const STAGES: ReadonlyArray<{ at: number; label: string }> = [

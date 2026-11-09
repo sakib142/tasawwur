@@ -34,13 +34,13 @@ describe("VideoParams", () => {
       video_aspect: "9:16",
       video_clip_duration: 5,
       video_transition_mode: null,
-      voice_name: "en-US-AvaNeural-Female",
+      voice_name: "am_michael",
       subtitle_display_mode: "sentence",
       font_name: "BeVietnamPro-Bold.ttf",
       font_size: 55,
       bgm_volume: 0.1,
     });
-    expect(p.voice_name).toBe("en-US-AvaNeural-Female");
+    expect(p.voice_name).toBe("am_michael");
     expect(p.video_transition_mode).toBeNull();
   });
 

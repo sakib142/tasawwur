@@ -11,15 +11,18 @@ export function AudioSection({
   voices,
   loading,
   error,
+  speechMessage,
 }: {
   params: Params;
   set: <K extends keyof Params>(k: K, v: Params[K]) => void;
   voices: VoiceOption[];
   loading: boolean;
   error: string | null;
+  /** Set when the speech model is missing, which blocks rendering entirely. */
+  speechMessage: string | null;
 }) {
   const current = voices.find((v) => v.id === params.voice_name);
-  const summary = current ? `${current.label} · ${current.localeName}` : "Default voice";
+  const summary = current ? `${current.name} · ${current.language}` : "Default voice";
 
   return (
     <Section title="Audio" summary={summary} defaultOpen>
@@ -27,9 +30,15 @@ export function AudioSection({
         label="Voice"
         hint={
           error ??
+          speechMessage ??
           (loading
             ? "Loading voices…"
-            : `${voices.length} voices, all free and without an API key.`)
+            : "Spoken on this machine. Nothing is sent anywhere, and nothing is billed.")
+        }
+        warning={
+          current && !current.recommended
+            ? `This voice is rated ${current.grade} by the model's authors. The higher-rated ones sound noticeably better.`
+            : null
         }
       >
         <Select
@@ -39,7 +48,7 @@ export function AudioSection({
             voices.length
               ? voices.map((v) => ({
                   value: v.id,
-                  label: `${v.label} — ${v.localeName}${v.multilingual ? " · multilingual" : ""}`,
+                  label: `${v.name} — ${v.language}, ${v.gender.toLowerCase()}${v.recommended ? "" : ` (rated ${v.grade})`}`,
                 }))
               : [{ value: params.voice_name, label: params.voice_name || "Default" }]
           }

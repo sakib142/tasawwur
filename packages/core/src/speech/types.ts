@@ -52,3 +52,17 @@ export class SpeechError extends Error {
     this.name = "SpeechError";
   }
 }
+
+/** A voice the speech provider can use. */
+export interface Voice {
+  /** Passed straight to the provider. */
+  id: string;
+  name: string;
+  language: string;
+  gender: "Male" | "Female";
+  /**
+   * The model authors' own rating, A through F. Quality varies a great deal
+   * between voices, so this is surfaced rather than hidden.
+   */
+  grade: string;
+}

@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DEFAULT_SETTINGS, Settings, listFonts, listVoices, redact, readSettings, writeSettings } from "./index.ts";
+import { DEFAULT_SETTINGS, GOOD_GRADES, KOKORO_VOICES, Settings, listFonts, redact, readSettings, writeSettings } from "./index.ts";
 
 describe("settings", () => {
   let dir: string;
@@ -21,9 +21,9 @@ describe("settings", () => {
   });
 
   it("round-trips a partial update without clobbering other fields", async () => {
-    await writeSettings({ defaultVoice: "en-GB-SoniaNeural-Female" });
+    await writeSettings({ defaultVoice: "bf_emma" });
     const after = await writeSettings({ videoSource: "pexels" });
-    expect(after.defaultVoice).toBe("en-GB-SoniaNeural-Female");
+    expect(after.defaultVoice).toBe("bf_emma");
     expect(after.videoSource).toBe("pexels");
   });
 
@@ -80,23 +80,28 @@ describe("fonts", () => {
   });
 });
 
-// Hits Microsoft's public catalogue; skipped when offline.
-const online = await fetch("https://speech.platform.bing.com", {
-  signal: AbortSignal.timeout(4000),
-}).then(() => true).catch(() => false);
 
-describe.skipIf(!online)("voices (live catalogue)", () => {
-  it("returns ids in the exact form the engine expects", async () => {
-    const voices = await listVoices({ locales: ["en"] });
-    expect(voices.length).toBeGreaterThan(20);
-    // "<ShortName>-<Gender>" — the engine dispatches on this string alone.
-    for (const v of voices) expect(v.id).toBe(`${v.shortName}-${v.gender}`);
-    expect(voices.some((v) => v.id === "en-US-AvaNeural-Female")).toBe(true);
-  }, 30_000);
+describe("voice catalogue", () => {
+  it("lists the voices the renderer can actually use", () => {
+    // This previously served a different provider's catalogue, so the picker
+    // offered names the renderer could not use and quietly substituted its
+    // default. Every id here must be one the model accepts.
+    expect(KOKORO_VOICES.length).toBeGreaterThan(20);
+    for (const v of KOKORO_VOICES) {
+      expect(v.id).toMatch(/^[a-z]{2}_[a-z]+$/);
+      expect(v.name).toBeTruthy();
+      expect(["Male", "Female"]).toContain(v.gender);
+    }
+  });
 
-  it("filters by locale prefix", async () => {
-    const ar = await listVoices({ locales: ["ar"] });
-    expect(ar.length).toBeGreaterThan(0);
-    expect(ar.every((v) => v.locale.startsWith("ar"))).toBe(true);
-  }, 30_000);
+  it("is ordered best first", () => {
+    expect(KOKORO_VOICES[0]!.grade).toBe("A");
+    expect(GOOD_GRADES.has(KOKORO_VOICES[0]!.grade)).toBe(true);
+    // The tail is genuinely worse, which is why grade is surfaced at all.
+    expect(GOOD_GRADES.has(KOKORO_VOICES.at(-1)!.grade)).toBe(false);
+  });
+
+  it("has no duplicate ids", () => {
+    expect(new Set(KOKORO_VOICES.map((v) => v.id)).size).toBe(KOKORO_VOICES.length);
+  });
 });

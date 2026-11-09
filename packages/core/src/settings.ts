@@ -16,7 +16,8 @@ export const Settings = z.object({
   engineUrl: z.string().url().default("http://127.0.0.1:8080/api/v1"),
   /** Locale prefixes offered in the voice picker. */
   voiceLocales: z.array(z.string()).default(["en"]),
-  defaultVoice: z.string().default("en-US-AvaNeural-Female"),
+  /** An id the local speech model accepts; see KOKORO_VOICES. */
+  defaultVoice: z.string().default("af_heart"),
   defaultFont: z.string().default("BeVietnamPro-Bold.ttf"),
   /**
    * Who writes the script when you give only a topic.

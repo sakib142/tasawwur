@@ -1,5 +1,6 @@
 import { estimateCues } from "./estimate.ts";
 import { SpeechError, type SpeechOutput, type SpeechProvider, type SpeechRequest } from "./types.ts";
+import { DEFAULT_VOICE } from "./voices.ts";
 
 /**
  * Kokoro — speech synthesis that runs on this machine.
@@ -120,7 +121,16 @@ export const kokoroProvider: SpeechProvider = {
     const model = await loadModel();
     if (signal?.aborted) throw new SpeechError("Speech synthesis cancelled.");
 
-    const chosen = voice in model.voices ? voice : "af_heart";
+    // Falling back rather than failing, because losing a three-minute render
+    // over a voice name is worse than an unexpected voice. But say so — a
+    // silent substitution here is what let the picker offer voices this model
+    // could not speak, with nothing in the output to show it.
+    const chosen = voice in model.voices ? voice : DEFAULT_VOICE;
+    if (chosen !== voice) {
+      console.warn(
+        `[speech] no voice "${voice}"; using "${chosen}". Valid ids come from KOKORO_VOICES.`,
+      );
+    }
     const result = await model.generate(trimmed, { voice: chosen, speed: rate });
 
     const durationSeconds = result.audio.length / result.sampling_rate;

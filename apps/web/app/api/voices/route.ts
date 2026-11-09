@@ -1,30 +1,30 @@
 import { NextResponse } from "next/server";
-import { listVoices } from "@tasawwur/core";
+import { GOOD_GRADES, KOKORO_VOICES, kokoroProvider } from "@tasawwur/core";
 
 /**
- * Native implementation — this route never touches the Python engine. The Edge
- * TTS catalogue is a plain HTTPS endpoint, so it is fetched directly.
+ * The voices that will actually be used.
+ *
+ * Listed from the local model's own metadata. Previously this served a
+ * different provider's catalogue, which meant the picker offered names the
+ * renderer could not use and silently substituted its default.
  */
-export async function GET(req: Request) {
-  const locales = new URL(req.url).searchParams.get("locales");
+export async function GET() {
+  const installed = await kokoroProvider.available();
 
-  try {
-    const voices = await listVoices({
-      locales: locales ? locales.split(",").map((l) => l.trim()).filter(Boolean) : ["en"],
-      signal: AbortSignal.timeout(15_000),
-    });
-    return NextResponse.json(
-      { voices },
-      // The catalogue changes rarely; cache at the edge for an hour.
-      { headers: { "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400" } },
-    );
-  } catch (cause) {
-    return NextResponse.json(
-      {
-        error: "Could not load the voice catalogue.",
-        detail: cause instanceof Error ? cause.message : "unknown error",
-      },
-      { status: 502 },
-    );
-  }
+  return NextResponse.json(
+    {
+      installed,
+      voices: KOKORO_VOICES.map((v) => ({
+        ...v,
+        // Quality varies a great deal between voices; say so rather than
+        // presenting a D-grade voice as equal to an A.
+        recommended: GOOD_GRADES.has(v.grade),
+      })),
+      /** Narration needs the model; without it nothing can be spoken. */
+      message: installed
+        ? null
+        : "Local speech is not installed. Run: npx pnpm@12 install",
+    },
+    { headers: { "Cache-Control": "public, max-age=3600" } },
+  );
 }
