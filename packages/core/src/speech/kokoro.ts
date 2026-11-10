@@ -1,5 +1,12 @@
 import { estimateCues } from "./estimate.ts";
-import { SpeechError, type SpeechOutput, type SpeechProvider, type SpeechRequest } from "./types.ts";
+import { sentences } from "../relevance.ts";
+import {
+  SpeechError,
+  type SpeechOutput,
+  type SpeechProvider,
+  type SpeechRequest,
+  type WordCue,
+} from "./types.ts";
 import { DEFAULT_VOICE } from "./voices.ts";
 
 /**
@@ -63,6 +70,65 @@ async function loadModel(): Promise<KokoroModel> {
   }
 }
 
+/**
+ * Silence between sentences.
+ *
+ * Kokoro is given the whole script at once by default and reads it straight
+ * through, so sentences run into each other at an even clip and the result
+ * sounds like something being recited rather than said. A short rest is most
+ * of the difference. Divided by the speaking rate, because someone who has
+ * asked for a faster read does not want the pauses left behind at full
+ * length.
+ */
+const SENTENCE_GAP_SECONDS = 0.28;
+
+/**
+ * Quiet after the final word.
+ *
+ * The video is sized from the narration, so with the model's own padding
+ * trimmed away the picture would cut out on the last syllable. Deliberate,
+ * and the same every time, rather than however much the model happened to
+ * leave behind.
+ */
+const END_PAD_SECONDS = 0.5;
+
+/**
+ * Strip the model's own silence from the ends of a generation.
+ *
+ * Kokoro pads what it returns with roughly three quarters of a second of
+ * quiet. Given the whole script that happens once, at the end, and nobody
+ * notices. Given a sentence at a time it happens between every sentence, and
+ * the first attempt at adding rests produced pauses of nearly a second —
+ * narration that dragged rather than breathed.
+ *
+ * A little is kept on each side: cutting to the exact first loud sample
+ * clips the attack off a word and makes the speech sound bitten.
+ */
+function trimSilence(samples: Float32Array, sampleRate: number): Float32Array {
+  const threshold = 0.012;
+  const pad = Math.round(sampleRate * 0.03);
+
+  let first = 0;
+  while (first < samples.length && Math.abs(samples[first]!) < threshold) first++;
+  if (first === samples.length) return samples; // all quiet; leave it alone
+
+  let last = samples.length - 1;
+  while (last > first && Math.abs(samples[last]!) < threshold) last--;
+
+  return samples.subarray(Math.max(0, first - pad), Math.min(samples.length, last + pad + 1));
+}
+
+function concatAudio(parts: Float32Array[]): Float32Array {
+  const total = parts.reduce((n, p) => n + p.length, 0);
+  const out = new Float32Array(total);
+  let at = 0;
+  for (const part of parts) {
+    out.set(part, at);
+    at += part.length;
+  }
+  return out;
+}
+
 /** Minimal RIFF/WAVE header for 32-bit float PCM. */
 function toWav(samples: Float32Array, sampleRate: number): Uint8Array {
   const bytesPerSample = 4;
@@ -99,9 +165,12 @@ export const kokoroProvider: SpeechProvider = {
   /**
    * Kokoro returns audio and nothing else — no word boundaries.
    *
-   * Captions are therefore estimated from word length. That is fine for
-   * sentence captions and visibly off for word-by-word ones, which is exactly
-   * why this is declared rather than assumed.
+   * Still false, and for the same reason: individual words are placed by
+   * estimating from their length, which is visibly off for word-by-word
+   * captions. Sentence boundaries are a different matter — those are measured,
+   * because each sentence is synthesised separately and its length is read
+   * from the samples. So the estimate no longer drifts across a whole script,
+   * only within one sentence.
    */
   wordTimings: false,
 
@@ -131,15 +200,56 @@ export const kokoroProvider: SpeechProvider = {
         `[speech] no voice "${voice}"; using "${chosen}". Valid ids come from KOKORO_VOICES.`,
       );
     }
-    const result = await model.generate(trimmed, { voice: chosen, speed: rate });
+    /*
+     * Spoken a sentence at a time.
+     *
+     * Two things fall out of this. The obvious one is that a rest can be put
+     * between sentences. The useful one is that each sentence's position in
+     * the audio stops being a guess: its length is measured from the samples
+     * that came back. Shots are cut on sentence ends, so those boundaries
+     * being exact rather than estimated is the difference between a cut that
+     * lands on the pause and one that lands near it.
+     *
+     * Words within a sentence are still estimated. The drift that causes no
+     * longer accumulates across the whole script, though — it is reset at
+     * every full stop.
+     */
+    const lines = sentences(trimmed);
+    const spoken = lines.length > 0 ? lines : [trimmed];
+    const gap = SENTENCE_GAP_SECONDS / Math.max(rate, 0.1);
 
-    const durationSeconds = result.audio.length / result.sampling_rate;
-    return {
-      audio: toWav(result.audio, result.sampling_rate),
-      format: "wav",
-      // Estimated, not measured. Honest about which it is.
-      cues: estimateCues(trimmed, durationSeconds),
-    };
+    const parts: Float32Array[] = [];
+    const cues: WordCue[] = [];
+    let sampleRate = 24_000;
+    let at = 0;
+
+    for (const [index, line] of spoken.entries()) {
+      if (signal?.aborted) throw new SpeechError("Speech synthesis cancelled.");
+
+      const result = await model.generate(line, { voice: chosen, speed: rate });
+      sampleRate = result.sampling_rate;
+      const audio = trimSilence(result.audio, sampleRate);
+      const durationSeconds = audio.length / sampleRate;
+      const last = index === spoken.length - 1;
+
+      for (const word of estimateCues(line, durationSeconds)) {
+        cues.push({ start: at + word.start, end: at + word.end, text: word.text });
+      }
+      // Hold the last word through the rest that follows it. Otherwise the
+      // caption blinks off into the silence, and the cut taken at this
+      // boundary lands on the final syllable instead of after it.
+      const tail = cues[cues.length - 1];
+      if (tail && !last) tail.end = at + durationSeconds + gap;
+
+      parts.push(audio);
+      at += durationSeconds;
+
+      const rest = last ? END_PAD_SECONDS : gap;
+      parts.push(new Float32Array(Math.round(rest * sampleRate)));
+      at += rest;
+    }
+
+    return { audio: toWav(concatAudio(parts), sampleRate), format: "wav", cues };
   },
 };
 
