@@ -17,6 +17,10 @@ interface Shot {
   term: string;
   clip: Clip;
   alternatives: Clip[];
+  /** The line this shot will sit under, when a script was written. */
+  line?: string;
+  /** How well the clip's tags match that line, 0 to 1. */
+  match?: number;
 }
 
 export interface Board {
@@ -136,14 +140,31 @@ export function Storyboard({
               )}
 
               <span className="flex min-w-0 flex-1 flex-col">
-                <span className="truncate text-sm">{shot.term}</span>
+                {/* The line matters more than the keyword: it is what the
+                    viewer will hear while this shot is on screen. */}
+                <span className="truncate text-sm">
+                  {shot.line ?? shot.term}
+                </span>
                 <span className="truncate text-xs text-stone-500">
                   {shot.clip.creator} · {board.clipDuration}s
                   {shot.clip.bytes
                     ? ` · ${Math.round(shot.clip.bytes / 1e6)}MB`
                     : ""}
+                  {shot.line ? ` · ${shot.term}` : ""}
                 </span>
               </span>
+
+              {/* Flagged rather than hidden. A shot that matches nothing in
+                  its line is the one worth swapping, and only the person
+                  looking at it can judge whether it actually works. */}
+              {shot.line && shot.match === 0 && (
+                <span
+                  className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-800 dark:bg-amber-950 dark:text-amber-400"
+                  title="Nothing in this clip's tags matches this line. It may still be fine."
+                >
+                  unmatched
+                </span>
+              )}
 
               <span className="flex shrink-0 items-center gap-1">
                 <IconButton label={`Move clip ${i + 1} up`} onClick={() => move(i, i - 1)} disabled={i === 0}>

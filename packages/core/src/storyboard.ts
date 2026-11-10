@@ -1,5 +1,6 @@
 import type { VideoAspect } from "@tasawwur/schema";
 import { type Clip, searchPixabay } from "./pixabay.ts";
+import { relevance, sentences } from "./relevance.ts";
 
 /**
  * Choosing and ordering the clips for a video, before anything is rendered.
@@ -18,6 +19,10 @@ export interface Shot {
   clip: Clip;
   /** Other results from the same term, for swapping. Thumbnails only. */
   alternatives: Clip[];
+  /** The line this shot is expected to sit under, when a script was given. */
+  line?: string;
+  /** How well the clip's tags match that line, 0 to 1. */
+  match?: number;
 }
 
 export interface Storyboard {
@@ -38,9 +43,22 @@ export interface BuildOptions {
   /** Estimated from the script; exact timing needs TTS and is not worth a round trip. */
   narrationSeconds: number;
   clipDuration: number;
+  /** Used to match each shot to the line it will cover. Optional. */
+  script?: string;
   aspect?: VideoAspect;
   signal?: AbortSignal;
 }
+
+/**
+ * What reusing a contributor costs, in units of relevance.
+ *
+ * Diversity exists because one contributor supplied five of fourteen clips in
+ * an early render and the result looked repetitive. Relevance exists because
+ * a calm river under "it meets a cliff, and it falls" looks worse still.
+ * Neither should win outright: at 0.35 a clip has to match the line markedly
+ * better to be worth repeating a creator for.
+ */
+const REPEAT_CREATOR_COST = 0.35;
 
 /** Words per second at a natural narration pace, matching the term checker. */
 export const WORDS_PER_SECOND = 2.6;
@@ -61,6 +79,7 @@ export function estimateNarrationSeconds(script: string): number {
 function chooseShots(
   byTerm: Map<string, Clip[]>,
   wanted: number,
+  lines: string[] = [],
 ): { shots: Omit<Shot, "id">[]; leftovers: Map<string, Clip[]> } {
   const remaining = new Map([...byTerm].map(([term, clips]) => [term, [...clips]]));
   const usedCreators = new Set<string>();
@@ -75,12 +94,26 @@ function chooseShots(
       if (shots.length >= wanted) break;
       if (clips.length === 0) continue;
 
-      // A creator not yet used wins; otherwise fall back to the next in line
-      // rather than dropping the term entirely.
-      const freshIndex = clips.findIndex(
-        (c) => !usedCreators.has(c.creator) && !usedClipIds.has(c.id),
-      );
-      const index = freshIndex !== -1 ? freshIndex : clips.findIndex((c) => !usedClipIds.has(c.id));
+      // Shots are cut on sentence ends, so shot n sits under line n. With no
+      // script there is no line, every candidate scores zero, and selection
+      // falls back to creator diversity and the provider's own ordering.
+      const line = lines.length > 0 ? lines[shots.length % lines.length]! : "";
+
+      let index = -1;
+      let best = -Infinity;
+      for (const [at, clip] of clips.entries()) {
+        if (usedClipIds.has(clip.id)) continue;
+        const score =
+          (line ? relevance(clip.tags, line) : 0) -
+          (usedCreators.has(clip.creator) ? REPEAT_CREATOR_COST : 0) -
+          // The provider ranked these by its own relevance; keep that as the
+          // tiebreak so an unscored set comes back in the order it arrived.
+          at * 0.001;
+        if (score > best) {
+          best = score;
+          index = at;
+        }
+      }
       if (index === -1) continue;
 
       const [chosen] = clips.splice(index, 1);
@@ -88,7 +121,12 @@ function chooseShots(
 
       usedCreators.add(chosen.creator);
       usedClipIds.add(chosen.id);
-      shots.push({ term, clip: chosen, alternatives: [] });
+      shots.push({
+        term,
+        clip: chosen,
+        alternatives: [],
+        ...(line ? { line, match: relevance(chosen.tags, line) } : {}),
+      });
       tookAny = true;
     }
 
@@ -106,7 +144,7 @@ function chooseShots(
  * shown and rearranged at no bandwidth cost. Files are fetched only on commit.
  */
 export async function buildStoryboard(opts: BuildOptions): Promise<Storyboard> {
-  const { apiKey, terms, narrationSeconds, clipDuration, aspect = "9:16", signal } = opts;
+  const { apiKey, terms, narrationSeconds, clipDuration, script = "", aspect = "9:16", signal } = opts;
 
   const cleaned = [...new Set(terms.map((t) => t.trim()).filter(Boolean))];
   if (cleaned.length === 0) {
@@ -129,7 +167,7 @@ export async function buildStoryboard(opts: BuildOptions): Promise<Storyboard> {
   // One spare: the renderer trims to the narration, and running a shot short is
   // worse than having one too many.
   const wanted = Math.ceil(narrationSeconds / clipDuration) + 1;
-  const { shots, leftovers } = chooseShots(byTerm, wanted);
+  const { shots, leftovers } = chooseShots(byTerm, wanted, sentences(script));
 
   return {
     shots: shots.map((shot, i) => ({

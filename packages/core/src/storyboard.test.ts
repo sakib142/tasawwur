@@ -137,3 +137,122 @@ describe("creatorSpread", () => {
     expect(creatorSpread([])).toEqual({ creators: 0, dominance: 0 });
   });
 });
+
+describe("matching clips to the script", () => {
+  /** A hit whose tags and creator are both controllable. */
+  function tagged(creator: string, tags: string, id: number) {
+    return {
+      id,
+      pageURL: `https://pixabay.com/videos/id-${id}/`,
+      duration: 12,
+      tags,
+      user: creator,
+      user_id: id,
+      isAiGenerated: false,
+      isGRated: true,
+      videos: {
+        small: {
+          url: `https://cdn/${id}.mp4`,
+          width: 1080,
+          height: 1920,
+          size: 2_000_000,
+          thumbnail: `https://cdn/${id}.jpg`,
+        },
+      },
+    };
+  }
+
+  /** One term, returning a fixed candidate list in a fixed order. */
+  function mockOneTerm(hits: ReturnType<typeof tagged>[]) {
+    vi.spyOn(globalThis, "fetch").mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ total: hits.length, totalHits: hits.length, hits }), {
+          status: 200,
+        }),
+    );
+  }
+
+  const SCRIPT = "A river has no plan. It meets a cliff, and it falls.";
+
+  it("puts the footage that fits the line under that line", async () => {
+    // The calm shot is first in the provider's order, so without matching it
+    // would take the opening line and the waterfall would follow it.
+    mockOneTerm([
+      tagged("ann", "lake, calm, reflection", 1),
+      tagged("bob", "waterfall, cliff, falling water", 2),
+      tagged("cal", "river, plan, meander", 3),
+    ]);
+
+    const board = await buildStoryboard({
+      ...base,
+      terms: ["water"],
+      narrationSeconds: 10,
+      script: SCRIPT,
+    });
+
+    expect(board.shots[1]!.clip.tags).toContain("waterfall");
+    expect(board.shots[1]!.line).toBe("It meets a cliff, and it falls.");
+  });
+
+  it("reports how well each shot matched", async () => {
+    mockOneTerm([tagged("ann", "river, water", 1), tagged("bob", "cliff, falls", 2)]);
+    const board = await buildStoryboard({
+      ...base,
+      terms: ["water"],
+      narrationSeconds: 10,
+      script: SCRIPT,
+    });
+    for (const shot of board.shots) {
+      expect(shot.match).toBeGreaterThanOrEqual(0);
+      expect(shot.match).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("still spreads across creators when nothing matches better", async () => {
+    // Relevance must not override diversity on a tie — this is the failure
+    // that made an early render look repetitive.
+    mockOneTerm([
+      tagged("ann", "water", 1),
+      tagged("ann", "water", 2),
+      tagged("ann", "water", 3),
+      tagged("bob", "water", 4),
+      tagged("cal", "water", 5),
+    ]);
+
+    const board = await buildStoryboard({
+      ...base,
+      terms: ["water"],
+      narrationSeconds: 15,
+      script: SCRIPT,
+    });
+
+    expect(creatorSpread(board.shots).creators).toBeGreaterThan(1);
+  });
+
+  it("keeps the provider's order when there is no script", async () => {
+    // Nothing to match against, so the first result should still win.
+    mockOneTerm([
+      tagged("ann", "lake, calm", 1),
+      tagged("bob", "waterfall, cliff", 2),
+    ]);
+    const board = await buildStoryboard({ ...base, terms: ["water"], narrationSeconds: 4 });
+    expect(board.shots[0]!.clip.id).toBe(1);
+    expect(board.shots[0]!.line).toBeUndefined();
+  });
+
+  it("never uses the same clip twice", async () => {
+    mockOneTerm([
+      tagged("ann", "cliff, falls", 1),
+      tagged("bob", "cliff, falls", 2),
+      tagged("cal", "cliff, falls", 3),
+    ]);
+    const board = await buildStoryboard({
+      ...base,
+      terms: ["water"],
+      narrationSeconds: 15,
+      script: SCRIPT,
+    });
+    const ids = board.shots.map((s) => s.clip.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+});

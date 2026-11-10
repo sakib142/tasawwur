@@ -41,6 +41,7 @@ export async function POST(req: Request) {
       apiKey: settings.pixabayApiKey,
       terms: parsed.data.terms,
       narrationSeconds: estimateNarrationSeconds(parsed.data.script),
+      script: parsed.data.script,
       clipDuration: parsed.data.clipDuration,
       aspect: parsed.data.aspect,
       signal: AbortSignal.timeout(45_000),
