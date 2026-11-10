@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { RenderError, ffmpeg, probe } from "./ffmpeg.ts";
+import { CENTRE, type Framing } from "./framing.ts";
 
 /**
  * Turning source footage into interchangeable pieces.
@@ -61,6 +62,8 @@ export interface NormaliseOptions {
   fps: number;
   /** cover crops to fill; contain fits the whole frame and pads. */
   fit: "cover" | "contain";
+  /** Where to take the crop from. Defaults to the middle. */
+  framing?: Framing;
   /** Playback rate applied to the footage, not the narration. */
   speed: number;
   transition: Transition;
@@ -83,13 +86,33 @@ export interface NormaliseOptions {
  */
 const COLOUR = "scale=out_color_matrix=bt709:out_range=tv,setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv";
 
-function fitFilter(width: number, height: number, fit: "cover" | "contain"): string {
-  return fit === "cover"
-    ? // Scale until both axes cover the frame, then crop the overflow.
-      `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height}`
-    : // Scale until it fits inside, then pad the remainder.
+function fitFilter(
+  width: number,
+  height: number,
+  fit: "cover" | "contain",
+  framing: Framing = CENTRE,
+): string {
+  if (fit !== "cover") {
+    // Scale until it fits inside, then pad the remainder.
+    return (
       `scale=${width}:${height}:force_original_aspect_ratio=decrease,` +
-      `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:black`;
+      `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:black`
+    );
+  }
+
+  // Scale until both axes cover the frame, then crop the overflow. The offset
+  // is a fraction of the travel available, so the same number works whatever
+  // the source happens to be — ffmpeg resolves in_w and out_w itself.
+  const fx = clamp01(framing.x).toFixed(4);
+  const fy = clamp01(framing.y).toFixed(4);
+  return (
+    `scale=${width}:${height}:force_original_aspect_ratio=increase,` +
+    `crop=${width}:${height}:(in_w-out_w)*${fx}:(in_h-out_h)*${fy}`
+  );
+}
+
+function clamp01(n: number): number {
+  return Number.isFinite(n) ? Math.min(Math.max(n, 0), 1) : 0.5;
 }
 
 /** Transitions that are a filter on the clip itself. */
@@ -162,7 +185,8 @@ function slideExpression(
 export async function normaliseClip(opts: NormaliseOptions): Promise<string> {
   const {
     source, outDir, index, width, height, duration, fps, fit, speed,
-    transition, grade = "none", availableFilters, slideFrom = "left", encoder, signal,
+    framing = CENTRE, transition, grade = "none", availableFilters,
+    slideFrom = "left", encoder, signal,
   } = opts;
 
   if (duration <= 0) throw new RenderError("A clip needs a duration above zero.");
@@ -179,7 +203,7 @@ export async function normaliseClip(opts: NormaliseOptions): Promise<string> {
 
   const isSlide = transition === "SlideIn" || transition === "SlideOut";
   const base = [
-    fitFilter(width, height, fit),
+    fitFilter(width, height, fit, framing),
     speed !== 1 ? `setpts=PTS/${speed}` : "",
     `fps=${fps}`,
     "setsar=1",

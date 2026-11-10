@@ -163,6 +163,50 @@ export interface FfmpegOptions {
 }
 
 /**
+ * Run ffmpeg and collect what it writes to stdout.
+ *
+ * For asking ffmpeg a question rather than telling it to make a file — raw
+ * pixels piped out and read directly, which avoids decoding an image format
+ * just to look at the values underneath it.
+ */
+export function ffmpegCapture(args: string[], opts: FfmpegOptions = {}): Promise<Buffer> {
+  const { signal, timeoutMs = 120_000 } = opts;
+
+  return capabilities().then(
+    ({ ffmpegPath }) =>
+      new Promise<Buffer>((resolve, reject) => {
+        const child = spawn(ffmpegPath, ["-hide_banner", "-nostdin", ...args], {
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+
+        const chunks: Buffer[] = [];
+        let stderr = "";
+        const timer = setTimeout(() => {
+          child.kill("SIGKILL");
+          reject(new RenderError(`ffmpeg timed out after ${Math.round(timeoutMs / 1000)}s.`));
+        }, timeoutMs);
+
+        child.stdout.on("data", (chunk: Buffer) => chunks.push(chunk));
+        child.stderr.on("data", (chunk: Buffer) => {
+          stderr = (stderr + chunk.toString()).slice(-4000);
+        });
+
+        signal?.addEventListener("abort", () => child.kill("SIGKILL"), { once: true });
+
+        child.on("error", (error) => {
+          clearTimeout(timer);
+          reject(new RenderError(`Could not run ffmpeg: ${error.message}`));
+        });
+        child.on("close", (code) => {
+          clearTimeout(timer);
+          if (code === 0) resolve(Buffer.concat(chunks));
+          else reject(new RenderError("ffmpeg failed.", { stderrTail: stderr }));
+        });
+      }),
+  );
+}
+
+/**
  * Run ffmpeg to completion.
  *
  * stderr is kept but only surfaced on failure: ffmpeg writes its entire

@@ -11,6 +11,7 @@ import { searchPixabay } from "./pixabay.ts";
 import { assemble, DURATION_MARGIN_SECONDS } from "./render/assemble.ts";
 import { renderCaptions } from "./render/captions.ts";
 import { normaliseClip, type Grade, type Transition } from "./render/clips.ts";
+import { CENTRE, findFraming } from "./render/framing.ts";
 import { shotDurations } from "./render/rhythm.ts";
 import { capabilities, probe, RenderError } from "./render/ffmpeg.ts";
 
@@ -193,11 +194,31 @@ export async function renderVideo(opts: PipelineOptions): Promise<PipelineResult
       progress: 50 + Math.round((index / durations.length) * 30),
       detail: `clip ${index + 1} of ${durations.length}`,
     });
+    const source = sources[index % sources.length]!;
+
+    // Where to crop from. Cheap enough to do per shot — the same clip used
+    // twice may want a different part of the frame each time once trimming
+    // lands — and it falls back to the middle on anything unexpected.
+    let framing = CENTRE;
+    if (params.video_fit_mode === "cover") {
+      const info = await probe(source).catch(() => null);
+      if (info) {
+        framing = await findFraming({
+          source,
+          sourceWidth: info.width,
+          sourceHeight: info.height,
+          width,
+          height,
+          signal,
+        });
+      }
+    }
+
     clips.push(
       await normaliseClip({
         // More shots than clips means the narration outran the footage; the
         // clips cycle rather than any one of them being stretched.
-        source: sources[index % sources.length]!,
+        source,
         outDir: clipsDir,
         index,
         width,
@@ -205,6 +226,7 @@ export async function renderVideo(opts: PipelineOptions): Promise<PipelineResult
         duration,
         fps: FPS,
         fit: params.video_fit_mode,
+        framing,
         speed: params.video_clip_speed,
         transition,
         grade: params.video_grade as Grade,
