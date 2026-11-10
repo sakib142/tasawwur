@@ -35,12 +35,13 @@ export function describePreset(preset: Preset): string[] {
     p.subtitle_display_mode === "word_by_word"
       ? `One word at a time${p.subtitle_animation === "pop_spring" ? ", popping in" : ""}`
       : "Full sentences";
-  return [
-    shape,
-    captions,
-    `${p.video_clip_duration}s cuts`,
-    `${p.font_size}px captions`,
-  ];
+  // The pace says more about the feel than the shot length does, so it
+  // replaces the raw seconds unless the preset leaves it at the default.
+  const cutting =
+    p.video_pace && p.video_pace !== "even"
+      ? `${p.video_pace} cuts`
+      : `${p.video_clip_duration}s cuts`;
+  return [shape, captions, cutting, `${p.font_size}px captions`];
 }
 
 const CAPTION_BASE = {
@@ -59,6 +60,7 @@ export const PRESETS: Preset[] = [
       ...CAPTION_BASE,
       video_aspect: "9:16",
       video_clip_duration: 5,
+      video_pace: "measured",
       video_transition_mode: null,
       subtitle_display_mode: "sentence",
       subtitle_animation: "none",
@@ -77,6 +79,7 @@ export const PRESETS: Preset[] = [
       ...CAPTION_BASE,
       video_aspect: "9:16",
       video_clip_duration: 3,
+      video_pace: "snappy",
       // Deliberately not "Shuffle": mixing FadeIn and FadeOut at a cut blinks
       // through black. A 40s test render showed five such flashes.
       video_transition_mode: null,
