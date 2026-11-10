@@ -15,6 +15,9 @@ import { useVideoParams } from "@/lib/useVideoParams";
 
 type Phase = "idle" | "running" | "done" | "error";
 
+/** Where the id of the render being followed is kept. */
+const FOLLOWING_KEY = "tasawwur:following";
+
 export function Studio() {
   const { params, set, seed, presetId, applyPreset, reset, isEdited } = useVideoParams();
   const { voices, fonts, tracks, musicMessage, loading, error: catalogueError, speechMessage } = useCatalogue();
@@ -25,7 +28,31 @@ export function Studio() {
     pexelsApiKeySet?: boolean;
   } | null>(null);
   const [phase, setPhase] = useState<Phase>("idle");
+  /*
+   * Which render this page is following, remembered across a reload.
+   *
+   * The work happens server-side and carries on regardless, but the id lived
+   * only in component state — so a refresh, or a hot reload in development,
+   * left the panel stuck at "Starting 0%" while the video quietly finished on
+   * disk with no way back to it. The progress stream already replays current
+   * state to a client that joins late; all that was missing was remembering
+   * what to re-join.
+   *
+   * Session storage rather than local: a render belongs to the tab that
+   * started it, and resurrecting a week-old id in a new window would be
+   * stranger than forgetting it.
+   */
   const [taskId, setTaskId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const saved = sessionStorage.getItem(FOLLOWING_KEY);
+    if (saved) setTaskId(saved);
+  }, []);
+
+  useEffect(() => {
+    if (taskId) sessionStorage.setItem(FOLLOWING_KEY, taskId);
+    else sessionStorage.removeItem(FOLLOWING_KEY);
+  }, [taskId]);
   const [error, setError] = useState<string | null>(null);
   const [writing, setWriting] = useState<"script" | "terms" | null>(null);
   const [writeError, setWriteError] = useState<string | null>(null);
@@ -46,6 +73,12 @@ export function Studio() {
   const [boardFor, setBoardFor] = useState<string | null>(null);
 
   const stream = useTaskStream(taskId);
+
+  // A remembered render that no longer exists would leave the page waiting on
+  // a stream with nothing to say. Forget it and show the form instead.
+  useEffect(() => {
+    if (stream.missing) setTaskId(null);
+  }, [stream.missing]);
   const preset = PRESETS.find((p) => p.id === presetId)!;
 
   // The schema default is a source this install may have no key for, so the

@@ -1,7 +1,6 @@
 import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { join, normalize } from "node:path";
-import { Readable } from "node:stream";
 import { jobDir } from "@tasawwur/core";
 
 /**
@@ -22,6 +21,65 @@ function resolveWithin(dir: string, name: string): string | null {
   if (!file) return null;
   const path = normalize(join(dir, file));
   return path.startsWith(normalize(dir)) ? path : null;
+}
+
+/**
+ * A file as a web stream that survives the reader walking away.
+ *
+ * `Readable.toWeb` looks like the obvious way to do this and is a trap: when
+ * the response is cancelled the web stream closes, but the Node stream reads
+ * on, and its next data event enqueues into a closed controller. That throws
+ * ERR_INVALID_STATE from inside the adapter, where there is no catch, so it
+ * reaches the top and takes the process with it — reloading the page while a
+ * video was loading killed the whole server.
+ *
+ * Built by hand instead: every enqueue is guarded, and the file handle is
+ * destroyed the moment anyone stops listening.
+ */
+function fileStream(
+  path: string,
+  range: { start?: number; end?: number },
+  signal: AbortSignal,
+): ReadableStream<Uint8Array> {
+  const file = createReadStream(path, range);
+
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      file.on("data", (chunk: string | Buffer) => {
+        try {
+          controller.enqueue(new Uint8Array(Buffer.from(chunk)));
+          // Stop reading ahead of a consumer that is not keeping up, rather
+          // than pulling the whole file into memory behind it.
+          if ((controller.desiredSize ?? 1) <= 0) file.pause();
+        } catch {
+          file.destroy();
+        }
+      });
+      file.on("end", () => {
+        try {
+          controller.close();
+        } catch {
+          // Already closed by a cancel.
+        }
+      });
+      file.on("error", (cause) => {
+        try {
+          controller.error(cause);
+        } catch {
+          // Nobody left to tell.
+        }
+      });
+
+      if (signal.aborted) file.destroy();
+      else signal.addEventListener("abort", () => file.destroy(), { once: true });
+    },
+    pull() {
+      file.resume();
+    },
+    cancel() {
+      file.destroy();
+    },
+  });
 }
 
 const TYPES: Record<string, string> = {
@@ -64,7 +122,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     }
 
     return new Response(
-      Readable.toWeb(createReadStream(path, { start, end })) as ReadableStream,
+      fileStream(path, { start, end }, req.signal),
       {
         status: 206,
         headers: {
@@ -78,7 +136,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     );
   }
 
-  return new Response(Readable.toWeb(createReadStream(path)) as ReadableStream, {
+  return new Response(fileStream(path, {}, req.signal), {
     headers: {
       "Content-Type": type,
       "Content-Length": String(size),

@@ -18,6 +18,14 @@ export interface StreamState {
   log: string[];
   finished: boolean;
   error: string | null;
+  /**
+   * The render being followed is not there.
+   *
+   * A remembered id outlives the thing it names — the server restarts, or the
+   * render is deleted — and without this the page would wait on a stream that
+   * is never going to say anything.
+   */
+  missing: boolean;
 }
 
 /**
@@ -29,22 +37,30 @@ export interface StreamState {
 export function useTaskStream(jobId: string | null): StreamState {
   const [job, setJob] = useState<Job | null>(null);
   const [log, setLog] = useState<string[]>([]);
+  const [missing, setMissing] = useState(false);
 
   useEffect(() => {
     if (!jobId) {
       setJob(null);
       setLog([]);
+      setMissing(false);
       return;
     }
 
     setJob(null);
     setLog([]);
+    setMissing(false);
+
+    // Whether anything ever arrived, so a closed stream can be told apart
+    // from a stream that was never going to deliver.
+    let heard = false;
 
     const source = new EventSource(`/api/videos/${encodeURIComponent(jobId)}/events`);
 
     const handle = (e: MessageEvent) => {
       try {
         const next = JSON.parse(e.data) as Job;
+        heard = true;
         setJob(next);
         // One line per stage, not per update — the stage name repeats on every
         // progress tick and a log of duplicates is unreadable.
@@ -62,7 +78,10 @@ export function useTaskStream(jobId: string | null): StreamState {
     }
     // The server closes the stream when the job ends; EventSource reports that
     // as an error and would otherwise reconnect forever.
-    source.onerror = () => source.close();
+    source.onerror = () => {
+      source.close();
+      if (!heard) setMissing(true);
+    };
 
     return () => source.close();
   }, [jobId]);
@@ -73,6 +92,7 @@ export function useTaskStream(jobId: string | null): StreamState {
     job,
     log,
     finished: Boolean(finished),
+    missing,
     error: job?.state === "failed" || job?.state === "cancelled" ? (job.error ?? "Failed.") : null,
   };
 }
