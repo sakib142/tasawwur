@@ -10,6 +10,11 @@ coverage/
 .env.*
 !.env.example
 
+# Holds API keys. It lives outside the repo by default, but TASAWWUR_SETTINGS
+# can point anywhere and a key committed once is a key to be rotated.
+settings.json
+**/settings.json
+
 storage/
 tmp/
 *.mp4
