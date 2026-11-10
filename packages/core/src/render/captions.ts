@@ -142,6 +142,15 @@ export function renderCaption(
 
   lines.forEach((line, i) => {
     const y = top + i * lineHeight + lineHeight / 2;
+
+    // A soft shadow under the first mark drawn. Over bright footage — snow,
+    // sky, a waterfall — white text with only a thin outline still dissolves
+    // into the picture; this separates it without reading as an effect.
+    // Scaled to the type size so it holds at any caption size.
+    ctx.shadowColor = "rgba(0, 0, 0, 0.55)";
+    ctx.shadowBlur = Math.max(2, Math.round(style.fontSize * 0.18));
+    ctx.shadowOffsetY = Math.max(1, Math.round(style.fontSize * 0.05));
+
     if (style.strokeWidth > 0) {
       // Canvas strokes centred on the glyph edge, so half the width lands
       // inside the letter. Doubling keeps the visible outline as asked for.
@@ -151,6 +160,13 @@ export function renderCaption(
       ctx.miterLimit = 2;
       ctx.strokeText(line, width / 2, y);
     }
+
+    // The shadow belongs to the outer edge only. Leaving it on for the fill
+    // darkens the letter from the inside and the type looks muddy.
+    ctx.shadowColor = "transparent";
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetY = 0;
+
     ctx.fillStyle = style.color;
     ctx.fillText(line, width / 2, y);
   });

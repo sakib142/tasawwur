@@ -24,7 +24,11 @@ describe("VideoParams", () => {
     expect(d.video_source).toBe("pexels");
     expect(d.subtitle_display_mode).toBe("sentence");
     expect(d.bgm_volume).toBe(0.2);
-    expect(d.font_size).toBe(60);
+    expect(d.font_size).toBe(72);
+    expect(d.video_grade).toBe("natural");
+    // The old default named a font that does not ship, so every caller
+    // relying on it failed at render time rather than here.
+    expect(d.font_name).toBe("BeVietnamPro-Bold.ttf");
   });
 
   it("accepts the params that produced the reference water video", () => {
@@ -60,9 +64,25 @@ describe("VideoParams", () => {
     expect(VideoParams.safeParse(input).success).toBe(false);
   });
 
-  it("matches the engine's VideoParams field count exactly", () => {
-    // Guards against silently dropping a field the engine still expects.
-    expect(Object.keys(VideoParams.shape)).toHaveLength(40);
+  it("still carries every field of the rendering contract", () => {
+    // A bare count broke on every legitimate addition and never said which
+    // field had gone. This names them, so a drop fails loudly and an addition
+    // does not fail at all.
+    const required = [
+      "video_subject", "video_script", "video_terms", "video_language",
+      "paragraph_number", "video_script_prompt", "custom_system_prompt",
+      "video_source", "video_aspect", "video_fit_mode", "video_concat_mode",
+      "video_transition_mode", "video_clip_duration", "video_clip_speed",
+      "match_materials_to_script", "video_count", "image_motion",
+      "video_materials", "voice_name", "voice_volume", "voice_rate",
+      "custom_audio_file", "bgm_type", "bgm_file", "bgm_volume",
+      "video_music_prompt", "sonilo_bgm_prompt", "subtitle_enabled",
+      "subtitle_position", "subtitle_display_mode", "subtitle_animation",
+      "custom_position", "font_name", "font_size", "text_fore_color",
+      "text_background_color", "rounded_subtitle_background", "stroke_color",
+      "stroke_width", "n_threads",
+    ];
+    expect(Object.keys(VideoParams.shape)).toEqual(expect.arrayContaining(required));
   });
 });
 

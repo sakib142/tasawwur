@@ -2,13 +2,15 @@
 
 import { Field, Section, Select, Slider } from "@/components/ui/Form";
 import type { Params } from "@/lib/useVideoParams";
-import type { VoiceOption } from "@/lib/useCatalogue";
+import type { TrackOption, VoiceOption } from "@/lib/useCatalogue";
 
 /** Audio Settings — the narration voice and how it sits in the mix. */
 export function AudioSection({
   params,
   set,
   voices,
+  tracks,
+  musicMessage,
   loading,
   error,
   speechMessage,
@@ -16,13 +18,25 @@ export function AudioSection({
   params: Params;
   set: <K extends keyof Params>(k: K, v: Params[K]) => void;
   voices: VoiceOption[];
+  tracks: TrackOption[];
+  /** Where to put music files, when none are bundled. */
+  musicMessage: string | null;
   loading: boolean;
   error: string | null;
   /** Set when the speech model is missing, which blocks rendering entirely. */
   speechMessage: string | null;
 }) {
   const current = voices.find((v) => v.id === params.voice_name);
-  const summary = current ? `${current.name} · ${current.language}` : "Default voice";
+  const scored = params.bgm_volume > 0 && params.bgm_type !== "none";
+  const summary = [
+    current ? `${current.name} · ${current.language}` : "Default voice",
+    scored ? "music" : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  /** "random" and "none" are modes; anything else names a file. */
+  const musicValue = scored ? (params.bgm_file || "random") : "none";
 
   return (
     <Section title="Audio" summary={summary} defaultOpen>
@@ -68,6 +82,47 @@ export function AudioSection({
           format={(v) => `${v.toFixed(2)}×`}
         />
       </Field>
+
+      <Field
+        label="Music"
+        hint={
+          musicMessage ??
+          "Mixed under the narration and ducked while anyone is speaking. Silence behind a voice is the loudest sign that something was generated rather than made."
+        }
+      >
+        <Select
+          value={musicValue}
+          onChange={(v) => {
+            if (v === "none") {
+              set("bgm_type", "none");
+              set("bgm_file", "");
+              return;
+            }
+            set("bgm_type", v === "random" ? "random" : "file");
+            set("bgm_file", v === "random" ? "" : v);
+            // A track chosen with the volume at zero would silently do nothing.
+            if (params.bgm_volume <= 0) set("bgm_volume", 0.18);
+          }}
+          options={[
+            { value: "none", label: "None — narration only" },
+            ...(tracks.length ? [{ value: "random", label: "Surprise me" }] : []),
+            ...tracks.map((t) => ({ value: t.id, label: t.label })),
+          ]}
+        />
+      </Field>
+
+      {scored && (
+        <Field label="Music volume" hint="Measured before ducking; it drops further under speech.">
+          <Slider
+            value={params.bgm_volume}
+            onChange={(v) => set("bgm_volume", v)}
+            min={0}
+            max={0.6}
+            step={0.02}
+            format={(v) => `${Math.round(v * 100)}%`}
+          />
+        </Field>
+      )}
 
       <Field label="Narration volume">
         <Slider

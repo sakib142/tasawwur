@@ -1,5 +1,6 @@
 export * from "./fonts.ts";
 export * from "./settings.ts";
+export * from "./music.ts";
 export * from "./pixabay.ts";
 export * from "./probe.ts";
 export * from "./storyboard.ts";

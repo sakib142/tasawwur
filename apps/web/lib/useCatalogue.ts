@@ -12,6 +12,11 @@ export interface VoiceOption {
   recommended: boolean;
 }
 
+export interface TrackOption {
+  id: string;
+  label: string;
+}
+
 export interface FontOption {
   id: string;
   label: string;
@@ -21,6 +26,9 @@ export interface FontOption {
 interface Catalogue {
   voices: VoiceOption[];
   fonts: FontOption[];
+  tracks: TrackOption[];
+  /** Where to put music files, shown when none are bundled. */
+  musicMessage: string | null;
   loading: boolean;
   /** Non-fatal: the form still works on built-in defaults. */
   error: string | null;
@@ -38,6 +46,8 @@ interface Catalogue {
 export function useCatalogue(): Catalogue {
   const [voices, setVoices] = useState<VoiceOption[]>([]);
   const [fonts, setFonts] = useState<FontOption[]>([]);
+  const [tracks, setTracks] = useState<TrackOption[]>([]);
+  const [musicMessage, setMusicMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [speechInstalled, setSpeechInstalled] = useState(true);
@@ -47,9 +57,10 @@ export function useCatalogue(): Catalogue {
     const ac = new AbortController();
 
     (async () => {
-      const [v, f] = await Promise.allSettled([
+      const [v, f, m] = await Promise.allSettled([
         fetch("/api/voices", { signal: ac.signal }),
         fetch("/api/fonts", { signal: ac.signal }),
+        fetch("/api/music", { signal: ac.signal }),
       ]);
 
       const problems: string[] = [];
@@ -69,6 +80,14 @@ export function useCatalogue(): Catalogue {
         problems.push("fonts");
       }
 
+      // Music is optional, so a failure here never counts as a problem — it
+      // just leaves the picker offering silence.
+      if (m.status === "fulfilled" && m.value.ok) {
+        const body = await m.value.json();
+        setTracks(body.tracks ?? []);
+        setMusicMessage(body.message ?? null);
+      }
+
       if (!ac.signal.aborted) {
         setError(problems.length ? `Could not load ${problems.join(" or ")}.` : null);
         setLoading(false);
@@ -78,5 +97,5 @@ export function useCatalogue(): Catalogue {
     return () => ac.abort();
   }, []);
 
-  return { voices, fonts, loading, error, speechInstalled, speechMessage };
+  return { voices, fonts, tracks, musicMessage, loading, error, speechInstalled, speechMessage };
 }

@@ -17,7 +17,7 @@ type Phase = "idle" | "running" | "done" | "error";
 
 export function Studio() {
   const { params, set, seed, presetId, applyPreset, reset, isEdited } = useVideoParams();
-  const { voices, fonts, loading, error: catalogueError, speechMessage } = useCatalogue();
+  const { voices, fonts, tracks, musicMessage, loading, error: catalogueError, speechMessage } = useCatalogue();
 
   const [settings, setSettings] = useState<{
     videoSource?: string;
@@ -337,6 +337,8 @@ export function Studio() {
             loading={loading}
             error={catalogueError}
             speechMessage={speechMessage}
+            tracks={tracks}
+            musicMessage={musicMessage}
           />
           <SubtitleSection
             params={params}

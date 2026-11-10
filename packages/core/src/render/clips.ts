@@ -11,6 +11,36 @@ import { RenderError, ffmpeg, probe } from "./ffmpeg.ts";
  * seconds and then stutters or goes green.
  */
 
+/** The shared looks. Values match the VideoGrade enum on the wire. */
+export type Grade = "none" | "natural" | "warm" | "cool";
+
+/**
+ * Deliberately restrained.
+ *
+ * The point is to make clips from different creators sit together, not to
+ * stylise them — a heavy grade on footage that was already graded by its
+ * author looks worse than none at all. Applied after the BT.709 conversion so
+ * every clip is adjusted in the same colour space, which is the whole reason
+ * it unifies them; `setparams` tagging is untouched by a pixel filter.
+ */
+const GRADES: Record<Grade, string> = {
+  none: "",
+  natural: "eq=contrast=1.06:saturation=1.08:gamma=1.02",
+  warm: "eq=contrast=1.06:saturation=1.10:gamma=1.02,colorbalance=rs=0.04:gs=0.01:bs=-0.04",
+  cool: "eq=contrast=1.06:saturation=1.04:gamma=1.02,colorbalance=rs=-0.04:bs=0.05",
+};
+
+/** The filter for a look, or "" when it is unavailable or switched off. */
+export function gradeFilter(grade: Grade, available?: ReadonlySet<string>): string {
+  const filter = GRADES[grade] ?? "";
+  if (!filter) return "";
+  // A build without these filters should render an ungraded video rather than
+  // fail — this ffmpeg already surprised us once by having no text filters.
+  const needed = filter.split(",").map((part) => part.split("=")[0]!);
+  if (available && needed.some((name) => !available.has(name))) return "";
+  return filter;
+}
+
 export type Transition =
   | null
   | "FadeIn"
@@ -34,6 +64,10 @@ export interface NormaliseOptions {
   /** Playback rate applied to the footage, not the narration. */
   speed: number;
   transition: Transition;
+  /** A shared look. Defaults to none so callers opt in. */
+  grade?: Grade;
+  /** Filters this ffmpeg has, so an unsupported grade is skipped not fatal. */
+  availableFilters?: ReadonlySet<string>;
   /** Random side for slides, so repeated clips do not all slide the same way. */
   slideFrom?: "left" | "right" | "top" | "bottom";
   encoder: string;
@@ -128,7 +162,7 @@ function slideExpression(
 export async function normaliseClip(opts: NormaliseOptions): Promise<string> {
   const {
     source, outDir, index, width, height, duration, fps, fit, speed,
-    transition, slideFrom = "left", encoder, signal,
+    transition, grade = "none", availableFilters, slideFrom = "left", encoder, signal,
   } = opts;
 
   if (duration <= 0) throw new RenderError("A clip needs a duration above zero.");
@@ -150,6 +184,7 @@ export async function normaliseClip(opts: NormaliseOptions): Promise<string> {
     `fps=${fps}`,
     "setsar=1",
     COLOUR,
+    gradeFilter(grade, availableFilters),
   ].filter(Boolean);
 
   let filterArgs: string[];

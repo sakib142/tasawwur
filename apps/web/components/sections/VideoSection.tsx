@@ -22,7 +22,8 @@ export function VideoSection({
 }) {
   const summary = [
     params.video_aspect,
-    `${params.video_clip_duration}s cuts`,
+    `cuts to ${params.video_clip_duration}s`,
+    params.video_grade !== "none" ? params.video_grade : null,
     params.video_count > 1 ? `${params.video_count} versions` : null,
   ]
     .filter(Boolean)
@@ -76,13 +77,32 @@ export function VideoSection({
         />
       </Field>
 
-      <Field label="Cut length" hint="How long each clip stays on screen.">
+      <Field
+        label="Longest cut"
+        hint="Shots change where a sentence ends, so they vary. This is the most any one of them can run."
+      >
         <Slider
           value={params.video_clip_duration}
           onChange={(v) => set("video_clip_duration", v)}
           min={2}
           max={12}
           format={(v) => `${v}s`}
+        />
+      </Field>
+
+      <Field
+        label="Look"
+        hint="One grade across every clip. Stock footage arrives from different creators with different white balance; matching it is most of what makes a montage look deliberate."
+      >
+        <Select
+          value={params.video_grade}
+          onChange={(v) => set("video_grade", v)}
+          options={[
+            { value: "natural", label: "Natural — a little more contrast and colour" },
+            { value: "warm", label: "Warm — golden, for anything sunlit" },
+            { value: "cool", label: "Cool — blue, for night and water" },
+            { value: "none", label: "None — leave each clip as it came" },
+          ]}
         />
       </Field>
 

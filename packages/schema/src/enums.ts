@@ -37,6 +37,16 @@ export const VideoTransitionMode = z.enum([
 ]);
 export type VideoTransitionMode = z.infer<typeof VideoTransitionMode>;
 
+/**
+ * A shared look applied to every clip.
+ *
+ * Stock footage arrives from different creators with different white balance
+ * and contrast; cut together raw it reads as assembled rather than authored.
+ * One grade across all of them is what unifies it.
+ */
+export const VideoGrade = z.enum(["none", "natural", "warm", "cool"]);
+export type VideoGrade = z.infer<typeof VideoGrade>;
+
 export const ImageMotion = z.enum(["static", "zoom"]);
 export type ImageMotion = z.infer<typeof ImageMotion>;
 

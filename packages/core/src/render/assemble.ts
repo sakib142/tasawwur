@@ -18,6 +18,8 @@ export interface AssembleOptions {
   narration: string;
   captions: Frame[];
   music?: { path: string; volume: number } | null;
+  /** Filters this ffmpeg has; decides whether music can duck under speech. */
+  availableFilters?: ReadonlySet<string>;
   narrationVolume: number;
   output: string;
   workDir: string;
@@ -38,6 +40,13 @@ function escapeConcatPath(path: string): string {
  * Running out of footage is the one failure the viewer cannot miss — the video
  * simply stops while the voice continues — so clips repeat rather than the
  * video ending early.
+ *
+ * The shortfall has to be worth covering, though. Encoding rounds each clip to
+ * the frame, so a set cut to exactly the right length still lands a few
+ * milliseconds short; covering that by appending another whole clip put a
+ * single frame of unrelated footage at the end of the video. The target
+ * already carries DURATION_MARGIN_SECONDS of slack for precisely this, so
+ * anything inside it counts as covered.
  */
 export async function concatClips(
   clips: string[],
@@ -53,7 +62,8 @@ export async function concatClips(
 
   const ordered: string[] = [];
   let covered = 0;
-  for (let i = 0; covered < targetSeconds; i++) {
+  const enough = targetSeconds - DURATION_MARGIN_SECONDS;
+  for (let i = 0; covered < enough; i++) {
     const at = i % clips.length;
     ordered.push(clips[at]!);
     covered += durations[at]!;
@@ -87,7 +97,7 @@ export async function concatClips(
  */
 export async function assemble(opts: AssembleOptions): Promise<string> {
   const {
-    clips, narration, captions, music, narrationVolume,
+    clips, narration, captions, music, narrationVolume, availableFilters,
     output, workDir, fps, encoder, signal, onProgress,
   } = opts;
 
@@ -124,17 +134,37 @@ export async function assemble(opts: AssembleOptions): Promise<string> {
     videoLabel = next;
   });
 
-  const audioInputs = [`[1:a]volume=${narrationVolume}[narration]`];
+  // Split the narration: one copy is heard, the other only steers the music.
+  const ducks = Boolean(music) && music!.volume > 0 && (availableFilters?.has("sidechaincompress") ?? true);
+  const audioInputs = ducks
+    ? [`[1:a]volume=${narrationVolume},asplit=2[narration][key]`]
+    : [`[1:a]volume=${narrationVolume}[narration]`];
   let audioLabel = "narration";
+
   if (music && music.volume > 0) {
     inputs.push("-stream_loop", "-1", "-i", music.path);
     const musicIndex = captions.length + 2;
     audioInputs.push(
-      // Loop to length, duck under the narration, and fade out at the end so
-      // the music does not stop dead with the picture.
+      // Loop to length and fade out at the end so the music does not stop
+      // dead with the picture.
       `[${musicIndex}:a]volume=${music.volume},atrim=0:${target.toFixed(3)},afade=t=out:st=${Math.max(target - 3, 0).toFixed(3)}:d=3[music]`,
-      `[narration][music]amix=inputs=2:duration=first:dropout_transition=0[mixed]`,
     );
+
+    if (ducks) {
+      // Real ducking. A plain mix holds the music at one level throughout, so
+      // it either buries the voice or is inaudible; this pulls it down while
+      // someone is speaking and lets it back up in the gaps. The release is
+      // long enough not to pump between words but short enough to recover
+      // between sentences.
+      audioInputs.push(
+        `[music][key]sidechaincompress=threshold=0.03:ratio=8:attack=20:release=600:makeup=1[ducked]`,
+        `[narration][ducked]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[mixed]`,
+      );
+    } else {
+      audioInputs.push(
+        `[narration][music]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[mixed]`,
+      );
+    }
     audioLabel = "mixed";
   }
 

@@ -6,10 +6,12 @@ import { buildSubtitles, toSrt } from "./captions.ts";
 import { alignCuesToText } from "./speech/align.ts";
 import { estimateCues } from "./speech/estimate.ts";
 import { kokoroProvider } from "./speech/kokoro.ts";
+import { resolveTrack } from "./music.ts";
 import { searchPixabay } from "./pixabay.ts";
-import { assemble } from "./render/assemble.ts";
+import { assemble, DURATION_MARGIN_SECONDS } from "./render/assemble.ts";
 import { renderCaptions } from "./render/captions.ts";
-import { normaliseClip, type Transition } from "./render/clips.ts";
+import { normaliseClip, type Grade, type Transition } from "./render/clips.ts";
+import { shotDurations } from "./render/rhythm.ts";
 import { capabilities, probe, RenderError } from "./render/ffmpeg.ts";
 
 /**
@@ -34,6 +36,8 @@ export interface PipelineOptions {
   workDir: string;
   /** Fonts directory. */
   fontsDir: string;
+  /** Music directory. Omitted falls back to the bundled one. */
+  musicDir?: string;
   /** For stock search. Not needed for local footage. */
   pixabayApiKey?: string;
   /** Already-downloaded footage, when the storyboard chose it. */
@@ -62,7 +66,7 @@ const STAGES: Array<{ stage: Stage; label: string; at: number }> = [
 ];
 
 export async function renderVideo(opts: PipelineOptions): Promise<PipelineResult> {
-  const { params, workDir, fontsDir, pixabayApiKey, resolvedMaterials, onEvent, signal } = opts;
+  const { params, workDir, fontsDir, musicDir, pixabayApiKey, resolvedMaterials, onEvent, signal } = opts;
 
   const emit = (stage: Stage, detail?: string) => {
     const found = STAGES.find((s) => s.stage === stage);
@@ -80,7 +84,7 @@ export async function renderVideo(opts: PipelineOptions): Promise<PipelineResult
 
   await mkdir(workDir, { recursive: true });
   const [width, height] = ASPECT_RESOLUTION[params.video_aspect];
-  const { workingEncoders } = await capabilities();
+  const { workingEncoders, filters } = await capabilities();
   const encoder = workingEncoders[0]!;
 
   // ---- script -------------------------------------------------------------
@@ -121,6 +125,12 @@ export async function renderVideo(opts: PipelineOptions): Promise<PipelineResult
     script,
   );
   const { cues } = buildSubtitles(aligned, params.subtitle_display_mode);
+  // Shots follow sentences even when captions are drawn a word at a time —
+  // cutting the picture on every word would be a strobe, not an edit.
+  const sentenceCues =
+    params.subtitle_display_mode === "sentence"
+      ? cues
+      : buildSubtitles(aligned, "sentence").cues;
   const subtitlePath = join(workDir, "subtitle.srt");
   await writeFile(subtitlePath, toSrt(cues), "utf8");
   stop();
@@ -164,28 +174,41 @@ export async function renderVideo(opts: PipelineOptions): Promise<PipelineResult
   const transition = (params.video_transition_mode ?? null) as Transition;
   const sides = ["left", "right", "top", "bottom"] as const;
 
+  // Shots are cut where the voice breaks rather than on a fixed interval, so
+  // the picture never changes mid-sentence. `video_clip_duration` becomes the
+  // longest a shot may be held, which is what the setting always meant to the
+  // person choosing it.
+  const durations = shotDurations(sentenceCues, sources.length, {
+    maxSeconds: Math.max(params.video_clip_duration, 1.5),
+    totalSeconds: durationSeconds + DURATION_MARGIN_SECONDS,
+  });
+
   const clips: string[] = [];
-  for (const [index, source] of sources.entries()) {
+  for (const [index, duration] of durations.entries()) {
     stop();
     onEvent?.({
       stage: "video",
       label: "Cutting and rendering",
       // The clip stage occupies 50-80%; the final mux takes the rest.
-      progress: 50 + Math.round((index / sources.length) * 30),
-      detail: `clip ${index + 1} of ${sources.length}`,
+      progress: 50 + Math.round((index / durations.length) * 30),
+      detail: `clip ${index + 1} of ${durations.length}`,
     });
     clips.push(
       await normaliseClip({
-        source,
+        // More shots than clips means the narration outran the footage; the
+        // clips cycle rather than any one of them being stretched.
+        source: sources[index % sources.length]!,
         outDir: clipsDir,
         index,
         width,
         height,
-        duration: params.video_clip_duration,
+        duration,
         fps: FPS,
         fit: params.video_fit_mode,
         speed: params.video_clip_speed,
         transition,
+        grade: params.video_grade as Grade,
+        availableFilters: filters,
         slideFrom: sides[index % sides.length],
         encoder,
         signal,
@@ -210,12 +233,20 @@ export async function renderVideo(opts: PipelineOptions): Promise<PipelineResult
 
   onEvent?.({ stage: "video", label: "Cutting and rendering", progress: 80, detail: "mixing" });
 
+  // Narration over silence is the loudest sign that something was generated
+  // rather than made. A missing track is not an error — it just renders dry.
+  const trackPath =
+    params.bgm_volume > 0
+      ? await resolveTrack(params.bgm_type, params.bgm_file, musicDir)
+      : null;
+
   const video = join(workDir, "final.mp4");
   await assemble({
     clips,
     narration: audioPath,
     captions,
-    music: null,
+    music: trackPath ? { path: trackPath, volume: params.bgm_volume } : null,
+    availableFilters: filters,
     narrationVolume: params.voice_volume,
     output: video,
     workDir: join(workDir, "assemble"),

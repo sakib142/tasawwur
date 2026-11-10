@@ -7,6 +7,7 @@ import {
   VideoAspect,
   VideoConcatMode,
   VideoFitMode,
+  VideoGrade,
   VideoTransitionMode,
 } from "./enums.ts";
 
@@ -52,7 +53,10 @@ export const VideoParams = z.object({
   video_concat_mode: VideoConcatMode.default("random"),
   /** null = no transition. */
   video_transition_mode: VideoTransitionMode.nullish(),
+  /** Longest a single shot is held; shots cut on sentence ends below this. */
   video_clip_duration: z.number().int().min(1).default(5),
+  /** A shared look across every clip. See VideoGrade. */
+  video_grade: VideoGrade.default("natural"),
   video_clip_speed: z.number().positive().finite().default(1),
   /** Forces sequential concat and asks the LLM for ordered keywords. */
   match_materials_to_script: z.boolean().default(false),
@@ -88,15 +92,20 @@ export const VideoParams = z.object({
   subtitle_animation: SubtitleAnimation.default("none"),
   /** Only meaningful when subtitle_position is "custom". Percent from top. */
   custom_position: z.number().min(0).max(100).default(70),
-  /** Must resolve inside resource/fonts — the engine rejects traversal. */
-  font_name: z.string().default("STHeitiMedium.ttc"),
-  font_size: z.number().int().min(1).default(60),
+  /**
+   * Must resolve inside the fonts directory — traversal is rejected.
+   *
+   * The previous default named a font that does not ship, so anything relying
+   * on it failed at render with "Could not load the caption font".
+   */
+  font_name: z.string().default("BeVietnamPro-Bold.ttf"),
+  font_size: z.number().int().min(1).default(72),
   text_fore_color: z.string().default("#FFFFFF"),
   /** Legacy: accepts a bool or a colour string. */
   text_background_color: z.union([z.boolean(), z.string()]).default(false),
   rounded_subtitle_background: z.boolean().default(false),
   stroke_color: z.string().default("#000000"),
-  stroke_width: z.number().min(0).finite().default(1.5),
+  stroke_width: z.number().min(0).finite().default(3),
 
   // ---- execution ---------------------------------------------------------
   /** ffmpeg thread count, not pipeline concurrency. */
