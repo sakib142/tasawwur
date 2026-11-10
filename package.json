@@ -15,7 +15,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "api": "echo 'Run the Python engine: see docs/RUNNING.md'",
-    "compare": "tsx scripts/compare-render.mts"
+    "compare": "tsx scripts/compare-render.mts",
+    "music": "tsx scripts/fetch-music.mts"
   },
   "devDependencies": {
     "@types/ws": "^8.18.2",

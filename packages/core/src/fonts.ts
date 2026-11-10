@@ -23,7 +23,7 @@ export interface Font {
 }
 
 /** Faces known to be good for Latin captions, in preference order. */
-const PREFERRED = ["BeVietnamPro-Bold", "BeVietnamPro-Medium", "Charm-Bold"];
+const PREFERRED = ["Anton-Regular", "BeVietnamPro-Bold", "BeVietnamPro-Medium", "Charm-Bold"];
 
 function toLabel(file: string): string {
   const stem = basename(file, extname(file));

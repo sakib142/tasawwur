@@ -71,7 +71,8 @@ Write the script to fit terms that pass the probe, not the other way round.
 ```bash
 pnpm install
 cp apps/web/.env.example apps/web/.env.local   # then edit it
-pnpm dev                                        # http://localhost:3000
+pnpm music                                      # optional: fetch the CC0 music beds
+pnpm dev                                        # http://localhost:3100
 ```
 
 Then open **Settings** and paste a [Pixabay API key](https://pixabay.com/api/docs/) —
@@ -161,11 +162,17 @@ terms so the footage follows the script rather than exhausting one keyword first
 ## Development
 
 ```bash
-pnpm dev         # GUI at :3000
+pnpm dev         # GUI at :3100
 pnpm test        # contract + integration tests
 pnpm typecheck   # all packages
 pnpm build       # production build
+pnpm music       # fetch the CC0 music beds (not committed)
 ```
+
+Music is fetched rather than committed: five beds is twenty-odd megabytes, and
+git keeps binaries forever. `scripts/fetch-music.mts` names the sources and the
+licence. Without it the app runs fine — videos are simply narration over
+silence, and the music picker says so.
 
 Integration tests drive a real engine and real TTS. They **skip themselves** when nothing
 is listening, so the suite stays green without a backend.

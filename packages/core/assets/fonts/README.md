@@ -5,8 +5,14 @@ render without hunting for a font file.
 
 | Font | Licence |
 |---|---|
+| Anton (Regular) | SIL Open Font License 1.1 |
 | Be Vietnam Pro (Bold, Medium) | SIL Open Font License 1.1 |
 | Charm (Bold) | SIL Open Font License 1.1 |
+
+Anton is the condensed display face. It is here because the heavy, narrow
+caption is most of what reads as short-form video, and none of the other
+faces can do it — a bold text face set large is simply large, not emphatic.
+Latin only, so it is offered rather than imposed.
 
 The OFL permits bundling and redistribution, including commercially, provided
 the fonts are not sold on their own and the licence travels with them.

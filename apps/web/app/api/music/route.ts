@@ -16,7 +16,7 @@ export async function GET() {
       directory: musicDir(),
       message: tracks.length
         ? null
-        : "No music bundled yet. Drop audio files into the music directory to use them.",
+        : "No music yet. Run `pnpm music` to fetch the bundled CC0 beds, or drop your own audio files into the music directory.",
     },
     { headers: { "Cache-Control": "public, max-age=60" } },
   );

@@ -82,6 +82,7 @@ export const PRESETS: Preset[] = [
       video_transition_mode: null,
       subtitle_display_mode: "word_by_word",
       subtitle_animation: "pop_spring",
+      font_name: "Anton-Regular.ttf",
       font_size: 78,
       stroke_width: 3,
       stroke_color: "#1A1A1A",

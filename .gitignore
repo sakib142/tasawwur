@@ -19,3 +19,7 @@ tmp/
 
 .DS_Store
 *.log
+
+# Music beds are fetched with `pnpm music`, not committed — see
+# scripts/fetch-music.mts for why.
+packages/core/assets/music/
