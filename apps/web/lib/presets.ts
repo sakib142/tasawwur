@@ -66,7 +66,7 @@ export const PRESETS: Preset[] = [
       stroke_width: 3,
       voice_name: "af_heart",
       voice_rate: 0.95,
-      bgm_volume: 0.1,
+      bgm_volume: 0.18,
     },
   },
   {
@@ -88,7 +88,7 @@ export const PRESETS: Preset[] = [
       stroke_color: "#1A1A1A",
       voice_name: "af_bella",
       voice_rate: 1,
-      bgm_volume: 0.12,
+      bgm_volume: 0.22,
     },
   },
   {
@@ -106,7 +106,7 @@ export const PRESETS: Preset[] = [
       stroke_width: 2.5,
       voice_name: "bf_emma",
       voice_rate: 1,
-      bgm_volume: 0.1,
+      bgm_volume: 0.18,
     },
   },
 ];
