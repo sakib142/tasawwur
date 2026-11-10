@@ -1,7 +1,7 @@
 # tasawwur · تصور
 
-**To imagine, and to picture — the same word in Arabic.** Describe something; get the
-picture back.
+**Arabic for imagining — from ṣ-w-r, the root that also gives the word for an image.**
+Describe something; get the picture back.
 
 tasawwur turns a script into a narrated short video. It speaks the words on your own
 machine, finds stock footage that matches each line, cuts the picture where the

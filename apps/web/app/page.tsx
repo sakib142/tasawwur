@@ -13,8 +13,8 @@ export default function Home() {
           </span>
         </div>
         <p className="text-sm text-stone-500">
-          To imagine, and to picture — the same word in Arabic. Describe something; get the
-          picture back.
+          Arabic for imagining — from ṣ-w-r, the root that also gives the word for an
+          image. Describe something; get the picture back.
         </p>
         </div>
         <Link
