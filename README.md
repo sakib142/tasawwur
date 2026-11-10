@@ -50,10 +50,15 @@ Check the terms first. It takes seconds and saves a render.
 ```bash
 git clone https://github.com/sakib142/tasawwur.git
 cd tasawwur
-pnpm install
+pnpm install        # ~900MB: the speech model's runtime is most of it
 pnpm music          # optional: fetch the public-domain music beds
 pnpm dev            # http://localhost:3100
 ```
+
+pnpm will mention that it skipped build scripts for `onnxruntime-node` and
+others. That is fine — they ship prebuilt binaries and speech works without
+them. The first time you render, the speech model itself (~97MB) is downloaded
+and cached.
 
 Then open **Settings** and paste a [Pixabay API key](https://pixabay.com/api/docs/) —
 free, instant, no card. That one key powers footage search and the term checker.
@@ -61,12 +66,12 @@ free, instant, no card. That one key powers footage search and the term checker.
 ### Speech on your own machine
 
 Narration runs locally through [Kokoro](https://huggingface.co/hexgrad/Kokoro-82M), an
-Apache-2.0 model. Nothing is sent anywhere and nothing is billed. It is not installed by
-default, because the ONNX runtime it needs is around 400MB:
+Apache-2.0 model. Nothing is sent anywhere and nothing is billed.
 
-```bash
-npx pnpm@12 install   # fetches the optional kokoro-js
-```
+It is an optional dependency, so `pnpm install` fetches it and the ONNX runtime it needs
+— which is why that install is large. If it fails for memory on a smaller machine, try
+`npx pnpm@12 install`, or skip it with `pnpm install --no-optional` and supply your own
+narration audio instead.
 
 Twenty-eight voices, each shown with the grade its authors gave it — quality varies a
 great deal between them, and an A voice and a D voice are not close.
