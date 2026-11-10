@@ -7,12 +7,15 @@ import {
 } from "./storyboard.ts";
 
 /** One Pixabay hit. `creator` and `id` are what selection reasons about. */
-function hit(creator: string, id = Math.floor(Math.random() * 1e6)) {
+function hit(creator: string, term = "water", id = Math.floor(Math.random() * 1e6)) {
   return {
     id,
     pageURL: `https://pixabay.com/videos/id-${id}/`,
     duration: 12,
-    tags: "water",
+    // Tagged with the term, as a real result is. Selection drops anything
+    // that does not answer the term that found it, so a fixture tagged with
+    // something else is filtered out before any test can see it.
+    tags: term,
     user: creator,
     user_id: creator.length,
     isAiGenerated: false,
@@ -33,7 +36,7 @@ function hit(creator: string, id = Math.floor(Math.random() * 1e6)) {
 function mockSearch(perTerm: Record<string, string[]>) {
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const q = new URL(String(input)).searchParams.get("q") ?? "";
-    const hits = (perTerm[q] ?? []).map((c) => hit(c));
+    const hits = (perTerm[q] ?? []).map((c) => hit(c, q));
     return new Response(JSON.stringify({ total: hits.length, totalHits: hits.length, hits }), {
       status: 200,
     });
@@ -55,8 +58,8 @@ describe("buildStoryboard", () => {
   it("chooses enough shots to cover the narration, plus one spare", async () => {
     // 20s of narration at 5s a shot needs four, and a spare guards against
     // running short, which is worse than one clip too many.
-    mockSearch({ a: ["p1", "p2", "p3", "p4", "p5", "p6"] });
-    const board = await buildStoryboard({ ...base, terms: ["a"] });
+    mockSearch({ river: ["p1", "p2", "p3", "p4", "p5", "p6"] });
+    const board = await buildStoryboard({ ...base, terms: ["river"] });
     expect(board.shots).toHaveLength(5);
     expect(coversNarration(board)).toBe(true);
   });
@@ -64,50 +67,50 @@ describe("buildStoryboard", () => {
   it("round-robins across terms rather than exhausting one", async () => {
     // Taking everything from the first keyword stops the footage following
     // the script.
-    mockSearch({ a: ["a1", "a2", "a3"], b: ["b1", "b2", "b3"], c: ["c1", "c2", "c3"] });
-    const board = await buildStoryboard({ ...base, terms: ["a", "b", "c"] });
-    expect(board.shots.slice(0, 3).map((s) => s.term)).toEqual(["a", "b", "c"]);
+    mockSearch({ river: ["a1", "a2", "a3"], forest: ["b1", "b2", "b3"], ocean: ["c1", "c2", "c3"] });
+    const board = await buildStoryboard({ ...base, terms: ["river", "forest", "ocean"] });
+    expect(board.shots.slice(0, 3).map((s) => s.term)).toEqual(["river", "forest", "ocean"]);
   });
 
   it("prefers creators it has not used yet", async () => {
     // The measured failure: one contributor supplied five of fourteen clips
     // and the finished video looked repetitive.
-    mockSearch({ a: ["same", "same", "same", "fresh"] });
-    const board = await buildStoryboard({ ...base, terms: ["a"], narrationSeconds: 10 });
+    mockSearch({ river: ["same", "same", "same", "fresh"] });
+    const board = await buildStoryboard({ ...base, terms: ["river"], narrationSeconds: 10 });
     const { creators } = creatorSpread(board.shots);
     expect(creators).toBeGreaterThan(1);
   });
 
   it("falls back to a used creator rather than leaving the video short", async () => {
     // Variety is preferred, not required. Running out of footage is worse.
-    mockSearch({ a: ["only", "only", "only", "only", "only"] });
-    const board = await buildStoryboard({ ...base, terms: ["a"] });
+    mockSearch({ river: ["only", "only", "only", "only", "only"] });
+    const board = await buildStoryboard({ ...base, terms: ["river"] });
     expect(board.shots.length).toBeGreaterThanOrEqual(4);
   });
 
   it("never repeats the same clip", async () => {
-    mockSearch({ a: ["p1", "p2"], b: ["p3", "p4"] });
-    const board = await buildStoryboard({ ...base, terms: ["a", "b"] });
+    mockSearch({ river: ["p1", "p2"], forest: ["p3", "p4"] });
+    const board = await buildStoryboard({ ...base, terms: ["river", "forest"] });
     const ids = board.shots.map((s) => s.clip.id);
     expect(new Set(ids).size).toBe(ids.length);
   });
 
   it("reports terms that returned nothing instead of hiding them", async () => {
-    mockSearch({ a: ["p1", "p2", "p3", "p4", "p5"], dud: [] });
-    const board = await buildStoryboard({ ...base, terms: ["a", "dud"] });
+    mockSearch({ river: ["p1", "p2", "p3", "p4", "p5"], dud: [] });
+    const board = await buildStoryboard({ ...base, terms: ["river", "dud"] });
     expect(board.emptyTerms).toEqual(["dud"]);
     expect(board.shots.length).toBeGreaterThan(0);
   });
 
   it("keeps the unused results as swap alternatives", async () => {
-    mockSearch({ a: ["p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8"] });
-    const board = await buildStoryboard({ ...base, terms: ["a"], narrationSeconds: 5 });
+    mockSearch({ river: ["p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8"] });
+    const board = await buildStoryboard({ ...base, terms: ["river"], narrationSeconds: 5 });
     expect(board.shots[0]!.alternatives.length).toBeGreaterThan(0);
   });
 
   it("stops rather than looping when every term is exhausted", async () => {
-    mockSearch({ a: ["p1"] });
-    const board = await buildStoryboard({ ...base, terms: ["a"], narrationSeconds: 60 });
+    mockSearch({ river: ["p1"] });
+    const board = await buildStoryboard({ ...base, terms: ["river"], narrationSeconds: 60 });
     expect(board.shots).toHaveLength(1);
     expect(coversNarration(board)).toBe(false); // the UI warns; it does not hang
   });
@@ -120,8 +123,8 @@ describe("buildStoryboard", () => {
   });
 
   it("gives every shot a stable id", async () => {
-    mockSearch({ a: ["p1", "p2", "p3", "p4", "p5"] });
-    const board = await buildStoryboard({ ...base, terms: ["a"] });
+    mockSearch({ river: ["p1", "p2", "p3", "p4", "p5"] });
+    const board = await buildStoryboard({ ...base, terms: ["river"] });
     expect(new Set(board.shots.map((s) => s.id)).size).toBe(board.shots.length);
   });
 });
@@ -139,13 +142,20 @@ describe("creatorSpread", () => {
 });
 
 describe("matching clips to the script", () => {
-  /** A hit whose tags and creator are both controllable. */
+  /**
+   * A hit whose tags and creator are both controllable.
+   *
+   * "water" is appended because selection now drops anything that does not
+   * answer the term that found it, and every one of these is found by
+   * searching "water". Without it they are filtered out before the thing
+   * under test — which line each shot lands under — can be observed.
+   */
   function tagged(creator: string, tags: string, id: number) {
     return {
       id,
       pageURL: `https://pixabay.com/videos/id-${id}/`,
       duration: 12,
-      tags,
+      tags: `${tags}, water`,
       user: creator,
       user_id: id,
       isAiGenerated: false,

@@ -1,5 +1,6 @@
 import type { VideoAspect } from "@tasawwur/schema";
 import { type Clip, searchPixabay } from "./pixabay.ts";
+import { termCoverage } from "./relevance.ts";
 
 /**
  * Score search terms before committing a script to them.
@@ -9,8 +10,15 @@ import { type Clip, searchPixabay } from "./pixabay.ts";
  * a single contributor supplied most of the clips for the strongest term, so
  * the footage was repetitive or wildly off-topic. Result counts hide this
  * completely. Creator spread exposes it.
+ *
+ * Counting is not enough on its own either. The provider matches loosely, on
+ * any word rather than all of them, so a term can come back full and come back
+ * wrong. "cold brew" returned four clips from three creators — winter, snow,
+ * frost, and a father playing with a baby in the snow, with no coffee in any
+ * of them — and this reported "plenty of variety" and a tick. A whole advert
+ * was built on that before anyone saw a frame.
  */
-export type Verdict = "good" | "thin" | "dominated" | "empty";
+export type Verdict = "good" | "thin" | "dominated" | "partial" | "empty";
 
 export interface TermReport {
   term: string;
@@ -22,6 +30,8 @@ export interface TermReport {
   topCreator: string | null;
   /** Clips Pixabay flagged as AI-generated, excluded from `clips`. */
   aiGeneratedExcluded: number;
+  /** Words of the term the results do not answer at all. */
+  ignoredWords: string[];
   /** Total seconds of footage available — how much timeline this can fill. */
   totalSeconds: number;
   verdict: Verdict;
@@ -37,19 +47,40 @@ export interface ProbeOptions {
   minClips?: number;
   /** Reject when one creator supplies more than this share. */
   maxDominance?: number;
+  /**
+   * A word answered by fewer than this share of results counts as ignored.
+   *
+   * Low on purpose. Tags are patchy, so a word can be under-represented and
+   * still be what the footage is about; this is meant to catch a word the
+   * search dropped entirely, not to grade how well it was honoured.
+   */
+  minWordShare?: number;
   signal?: AbortSignal;
 }
 
 function judge(
+  term: string,
   clips: Clip[],
   minClips: number,
   maxDominance: number,
-): { verdict: Verdict; dominance: number; topCreator: string | null; advice: string } {
+  minWordShare: number,
+): {
+  verdict: Verdict;
+  dominance: number;
+  topCreator: string | null;
+  ignoredWords: string[];
+  advice: string;
+} {
+  const coverage = termCoverage(term, clips.map((c) => c.tags));
+  const ignoredWords = coverage.filter((c) => c.share < minWordShare).map((c) => c.word);
+  const answered = coverage.filter((c) => c.share >= minWordShare).map((c) => c.word);
+
   if (clips.length === 0) {
     return {
       verdict: "empty",
       dominance: 0,
       topCreator: null,
+      ignoredWords: [],
       advice: "No usable footage at this aspect ratio. Try a broader or more visual word.",
     };
   }
@@ -60,11 +91,28 @@ function judge(
   const [topCreator, topCount] = [...byCreator.entries()].sort((a, b) => b[1] - a[1])[0]!;
   const dominance = topCount / clips.length;
 
+  // Said before anything about counts: a term can come back full and come
+  // back about something else entirely, and that is the failure that reaches
+  // the finished video looking deliberate.
+  if (ignoredWords.length > 0 && answered.length > 0) {
+    return {
+      verdict: "partial",
+      dominance,
+      topCreator,
+      ignoredWords,
+      advice:
+        `The search ignored ${ignoredWords.map((w) => `"${w}"`).join(" and ")} — these ` +
+        `clips match ${answered.map((w) => `"${w}"`).join(" and ")} only. Fine if that ` +
+        `is the subject; not if it is the adjective.`,
+    };
+  }
+
   if (dominance > maxDominance && clips.length > 1) {
     return {
       verdict: "dominated",
       dominance,
       topCreator,
+      ignoredWords,
       advice:
         `${topCount} of ${clips.length} clips are by ${topCreator}, so the footage will ` +
         `look repetitive. Try a different wording.`,
@@ -76,6 +124,7 @@ function judge(
       verdict: "thin",
       dominance,
       topCreator,
+      ignoredWords,
       advice: `Only ${clips.length} usable clips — fine as a supporting term, not as a main one.`,
     };
   }
@@ -84,13 +133,16 @@ function judge(
     verdict: "good",
     dominance,
     topCreator,
+    ignoredWords,
     advice: `${clips.length} clips from ${byCreator.size} creators. Plenty of variety.`,
   };
 }
 
 /** Probe a single term. Never throws — failures come back as a report. */
 export async function probeTerm(term: string, opts: ProbeOptions): Promise<TermReport> {
-  const { apiKey, aspect = "9:16", minClips = 4, maxDominance = 0.5, signal } = opts;
+  const {
+    apiKey, aspect = "9:16", minClips = 4, maxDominance = 0.5, minWordShare = 0.2, signal,
+  } = opts;
 
   const base = {
     term,
@@ -99,6 +151,7 @@ export async function probeTerm(term: string, opts: ProbeOptions): Promise<TermR
     dominance: 0,
     topCreator: null,
     aiGeneratedExcluded: 0,
+    ignoredWords: [] as string[],
     totalSeconds: 0,
     sample: [] as Clip[],
   };
@@ -115,7 +168,9 @@ export async function probeTerm(term: string, opts: ProbeOptions): Promise<TermR
     });
     const usable = all.filter((c) => !c.aiGenerated);
 
-    const { verdict, dominance, topCreator, advice } = judge(usable, minClips, maxDominance);
+    const { verdict, dominance, topCreator, ignoredWords, advice } = judge(
+      term, usable, minClips, maxDominance, minWordShare,
+    );
 
     return {
       ...base,
@@ -123,6 +178,7 @@ export async function probeTerm(term: string, opts: ProbeOptions): Promise<TermR
       distinctCreators: new Set(usable.map((c) => c.creator)).size,
       dominance,
       topCreator,
+      ignoredWords,
       aiGeneratedExcluded: all.length - usable.length,
       totalSeconds: Math.round(usable.reduce((n, c) => n + c.durationSeconds, 0)),
       verdict,
@@ -170,6 +226,8 @@ export async function probeTerms(
 
   const good = reports.filter((r) => r.verdict === "good").length;
   const bad = reports.filter((r) => r.verdict === "dominated" || r.verdict === "empty");
+  // Not failures, but not something to render without looking at.
+  const partial = reports.filter((r) => r.verdict === "partial");
 
   const uniqueSeconds = [...seen.values()].reduce((n, c) => n + c.durationSeconds, 0);
   const ready = good >= 2 && bad.length < reports.length / 2;
@@ -180,9 +238,12 @@ export async function probeTerms(
     uniqueSeconds: Math.round(uniqueSeconds),
     verdict: ready ? "ready" : "risky",
     advice: ready
-      ? `${good} strong terms. Good footage variety.`
+      ? partial.length
+        ? `${good} strong terms, but check ${partial.map((r) => `"${r.term}"`).join(", ")} — ` +
+          `the search only honoured part of each.`
+        : `${good} strong terms. Good footage variety.`
       : bad.length
-        ? `Replace ${bad.map((r) => `"${r.term}"`).join(", ")} — they add little or repeat one creator.`
+        ? `Replace ${bad.map((r) => `"${r.term}"`).join(", ")} — they repeat one creator or find nothing.`
         : "Add a couple more terms so the footage has variety.",
   };
 }

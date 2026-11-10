@@ -168,7 +168,13 @@ export function Studio() {
   const boardKey = `${termsText}|${params.video_clip_duration}|${params.video_aspect}`;
   const boardStale = board !== null && boardFor !== boardKey;
 
-  const previewClips = useCallback(async () => {
+  /**
+   * Search for footage and arrange it, without deciding what to do with it.
+   *
+   * Separate from showing it, because Generate needs the same search when
+   * nobody has previewed anything.
+   */
+  const buildBoard = useCallback(async (): Promise<Board | null> => {
     setPreviewing(true);
     setBoardError(null);
     try {
@@ -185,30 +191,42 @@ export function Studio() {
       });
       const body = await res.json();
       if (!res.ok) {
-        setBoardError(body.detail ?? body.error ?? "Could not preview clips.");
-        return;
+        setBoardError(body.detail ?? body.error ?? "Could not find footage.");
+        return null;
       }
-      setBoard(body);
-      setBoardFor(boardKey);
+      return body as Board;
     } catch {
       setBoardError("Could not reach the server.");
+      return null;
     } finally {
       setPreviewing(false);
     }
-  }, [termsText, params.video_script, params.video_clip_duration, params.video_aspect, boardKey]);
+  }, [
+    termsText,
+    params.video_script,
+    params.video_clip_duration,
+    params.video_pace,
+    params.video_aspect,
+  ]);
 
-  /** Download the arranged clips, then render exactly those. */
-  const renderBoard = useCallback(async () => {
-    if (!board) return;
+  const previewClips = useCallback(async () => {
+    const built = await buildBoard();
+    if (!built) return;
+    setBoard(built);
+    setBoardFor(boardKey);
+  }, [buildBoard, boardKey]);
+
+  /** Download a chosen set of clips, then render exactly those. */
+  const renderShots = useCallback(async (shots: Board["shots"]) => {
     setBoardError(null);
-    setCommitting({ index: 0, total: board.shots.length, label: "" });
+    setCommitting({ index: 0, total: shots.length, label: "" });
 
     try {
       const res = await fetch("/api/storyboard/commit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          clips: board.shots.map((s) => ({ url: s.clip.url, label: s.term })),
+          clips: shots.map((s) => ({ url: s.clip.url, label: s.term })),
         }),
       });
       if (!res.body) throw new Error("No response from the server.");
@@ -258,12 +276,43 @@ export function Studio() {
       setCommitting(null);
       setBoardError(e instanceof Error ? e.message : "Could not prepare the clips.");
     }
-  }, [board, params]);
+  }, [params]);
 
+  const renderBoard = useCallback(() => {
+    if (board) void renderShots(board.shots);
+  }, [board, renderShots]);
+
+  const usesStock = params.video_source !== "local";
   const canSubmit =
-    Boolean(params.video_subject.trim() || params.video_script.trim()) && phase !== "running";
+    Boolean(params.video_subject.trim() || params.video_script.trim()) &&
+    // Stock footage is found by searching, so without a term there is nothing
+    // to find. Said here rather than discovered three stages into a render.
+    (!usesStock || Boolean(termsText.trim())) &&
+    phase !== "running";
 
   const submit = useCallback(async () => {
+    /*
+     * Stock footage is gathered here when it has not been already.
+     *
+     * Previewing was meant to be an opportunity, not a toll gate, but the
+     * renderer refuses to search for itself — so pressing Generate with a
+     * stock source and no storyboard failed every time, several stages in,
+     * having already written the narration. Now it does the search, takes
+     * what it finds and renders that; previewing first is still the way to
+     * change what it took.
+     */
+    if (usesStock) {
+      const ready = board && !boardStale ? board : await buildBoard();
+      if (!ready) {
+        setPhase("idle");
+        return;
+      }
+      setPhase("running");
+      await renderShots(ready.shots);
+      setBoard(null);
+      return;
+    }
+
     setPhase("running");
     setError(null);
     setTaskId(null);
@@ -280,7 +329,7 @@ export function Studio() {
       setPhase("error");
       setError(e instanceof Error ? e.message : "Something went wrong.");
     }
-  }, [params]);
+  }, [params, usesStock, board, boardStale, buildBoard, renderShots]);
 
   const videoReady = stream.job?.state === "done";
 
@@ -429,8 +478,19 @@ export function Studio() {
             disabled={!canSubmit}
             className="rounded-md bg-stone-900 px-5 py-2.5 text-sm font-medium text-stone-50 transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-stone-100 dark:text-stone-900"
           >
-            {phase === "running" ? "Generating…" : "Generate video"}
+            {previewing && phase !== "running"
+              ? "Finding footage…"
+              : phase === "running"
+                ? "Generating…"
+                : "Generate video"}
           </button>
+          {/* Why the button is dim, next to the button, rather than as a
+              failure several stages into a render. */}
+          {usesStock && !termsText.trim() && (
+            <span className="text-xs text-stone-500">
+              Add a search term, or upload your own footage, and this will find the clips for you.
+            </span>
+          )}
           {phase === "running" && (
             <button
               type="button"

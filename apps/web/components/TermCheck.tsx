@@ -1,17 +1,10 @@
 "use client";
 
 import { useState } from "react";
-
-type Verdict = "good" | "thin" | "dominated" | "empty";
-
-interface TermReport {
-  term: string;
-  clips: number;
-  distinctCreators: number;
-  aiGeneratedExcluded: number;
-  verdict: Verdict;
-  advice: string;
-}
+// Imported rather than restated. This was a copy, it fell behind when a
+// verdict was added, and the lookup below returned undefined and took the
+// page down with it. Type-only, so nothing server-side comes with it.
+import type { TermReport, Verdict } from "@tasawwur/core";
 
 interface Summary {
   reports: TermReport[];
@@ -22,12 +15,22 @@ interface Summary {
 }
 
 /** Colour carries severity; the glyph carries it again for colour-blind users. */
+/**
+ * Exhaustive by type, so adding a verdict cannot silently render nothing.
+ *
+ * It already did once: "partial" was added to the checker without a mark
+ * here, and the lookup came back undefined and took the whole page down.
+ */
 const VERDICT: Record<Verdict, { mark: string; className: string }> = {
   good: { mark: "✓", className: "text-emerald-700 dark:text-emerald-400" },
   thin: { mark: "~", className: "text-amber-700 dark:text-amber-400" },
   dominated: { mark: "!", className: "text-amber-700 dark:text-amber-400" },
+  partial: { mark: "≈", className: "text-amber-700 dark:text-amber-400" },
   empty: { mark: "✕", className: "text-red-700 dark:text-red-400" },
 };
+
+/** A verdict from a newer server than this page is still legible. */
+const UNKNOWN = { mark: "·", className: "text-stone-500" };
 
 /**
  * Checks search terms before a render is started.
@@ -98,8 +101,11 @@ export function TermCheck({
           <ul className="flex flex-col gap-1.5">
             {summary.reports.map((r) => (
               <li key={r.term} className="flex gap-2 text-xs leading-relaxed">
-                <span className={`font-mono ${VERDICT[r.verdict].className}`} aria-hidden>
-                  {VERDICT[r.verdict].mark}
+                <span
+                  className={`font-mono ${(VERDICT[r.verdict] ?? UNKNOWN).className}`}
+                  aria-hidden
+                >
+                  {(VERDICT[r.verdict] ?? UNKNOWN).mark}
                 </span>
                 <span className="flex-1">
                   <span className="font-medium">{r.term}</span>

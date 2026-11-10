@@ -1,6 +1,6 @@
 import type { VideoAspect } from "@tasawwur/schema";
 import { type Clip, searchPixabay } from "./pixabay.ts";
-import { relevance, sentences } from "./relevance.ts";
+import { coversTerm, relevance, sentences } from "./relevance.ts";
 import { paceShotSeconds, type Pace } from "./render/rhythm.ts";
 
 /**
@@ -157,7 +157,19 @@ export async function buildStoryboard(opts: BuildOptions): Promise<Storyboard> {
   const results = await Promise.all(
     cleaned.map(async (term) => {
       try {
-        return [term, await searchPixabay(term, { apiKey, aspect, signal })] as const;
+        const found = await searchPixabay(term, { apiKey, aspect, signal });
+        /*
+         * Anything that does not answer the whole term is dropped here.
+         *
+         * The provider matches on any word, so "cold brew" came back four
+         * clips of snow and "Dubai Marina" came back Brighton. Those were
+         * then cut into the video, where they read as a deliberate choice.
+         * Fewer shots that belong is a better video than more that do not —
+         * and the term check says, before any of this, which terms are about
+         * to lose most of their results this way.
+         */
+        const onTopic = found.filter((c) => coversTerm(c.tags, term));
+        return [term, onTopic] as const;
       } catch {
         return [term, [] as Clip[]] as const;
       }

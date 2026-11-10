@@ -90,6 +90,50 @@ export function relevance(tags: readonly string[], sentence: string): number {
 }
 
 /**
+ * Does a clip answer the whole term, or only part of it?
+ *
+ * Used to keep footage out of a video rather than to warn about it. A search
+ * for "cold brew" returns clips tagged "cold" and nothing to do with coffee;
+ * a search for "Dubai Marina" returns Brighton. Both answer one word, and
+ * neither is what was asked for.
+ */
+export function coversTerm(tags: readonly string[], term: string): boolean {
+  // Not 1 exactly: the score is a ratio and a three-word term divides by three.
+  return relevance(tags, term) >= 0.999;
+}
+
+/**
+ * Which words of a term the results actually answer, and which were ignored.
+ *
+ * The provider matches on any word rather than all of them, and says nothing
+ * about which. "cold brew" came back four clips of snow — every one tagged
+ * "cold", not one tagged anything to do with coffee.
+ *
+ * Judging that lexically is not possible, and it is worth being clear why.
+ * "Dubai Marina" returns genuine Dubai skylines tagged "dubai" but never
+ * "marina": the same shape of answer — one word honoured, one ignored — and
+ * a perfectly good result. The difference is that "dubai" identifies the
+ * subject on its own and "cold" does not, which is a fact about the words,
+ * not about the tags.
+ *
+ * So this reports rather than rules. Naming the ignored word lets a person
+ * see "matched cold, ignored brew" and decide in a second what no amount of
+ * string comparison can decide for them.
+ */
+export function termCoverage(
+  term: string,
+  clipTags: ReadonlyArray<readonly string[]>,
+): { word: string; share: number }[] {
+  const words = [...contentWords(term)];
+  if (clipTags.length === 0) return words.map((word) => ({ word, share: 0 }));
+
+  return words.map((word) => ({
+    word,
+    share: clipTags.filter((tags) => relevance(tags, word) > 0).length / clipTags.length,
+  }));
+}
+
+/**
  * Split a script into sentences.
  *
  * The renderer cuts shots on sentence ends, so this is the same unit the

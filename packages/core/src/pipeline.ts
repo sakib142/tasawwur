@@ -161,8 +161,10 @@ export async function renderVideo(opts: PipelineOptions): Promise<PipelineResult
     if (terms.length === 0) {
       throw new RenderError("There are no search terms, so there is nothing to look for.");
     }
+    // The renderer never searches. Callers gather footage first — the web app
+    // does it on Generate — and pass what they chose as materials.
     throw new RenderError(
-      "Stock footage must be chosen through Preview clips before rendering.",
+      "No footage was supplied. Search for clips first and pass them as materials.",
     );
   }
   stop();

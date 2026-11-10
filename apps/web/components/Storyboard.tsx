@@ -29,6 +29,13 @@ export interface Board {
   totalSeconds: number;
   narrationSeconds: number;
   emptyTerms: string[];
+  /** Whether the script can be illustrated at all. See describeCoverage. */
+  coverage?: {
+    unmatched: number;
+    creators: number;
+    verdict: "ready" | "thin" | "mismatched";
+    advice: string;
+  };
 }
 
 /**
@@ -106,6 +113,23 @@ export function Storyboard({
           Discard
         </button>
       </header>
+
+      {/*
+        The verdict on the script, before anything is rendered.
+        A mismatch is stated loudly because it is the failure that otherwise
+        reaches the finished video looking like a deliberate choice: an advert
+        set in Riyadh came back as snow and the wrong cities, and watching it
+        was the only way to find out.
+      */}
+      {board.coverage && board.coverage.verdict === "mismatched" && (
+        <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+          {board.coverage.advice}
+        </p>
+      )}
+
+      {board.coverage && board.coverage.verdict === "ready" && (
+        <p className="text-xs text-stone-500">{board.coverage.advice}</p>
+      )}
 
       {short && (
         <p className="text-xs text-amber-700 dark:text-amber-500">

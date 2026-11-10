@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { buildStoryboard, estimateNarrationSeconds, readSettings } from "@tasawwur/core";
+import { buildStoryboard, describeCoverage, estimateNarrationSeconds, readSettings } from "@tasawwur/core";
 import { VideoAspect, VideoPace } from "@tasawwur/schema";
 import { z } from "zod";
 
@@ -48,7 +48,9 @@ export async function POST(req: Request) {
       aspect: parsed.data.aspect,
       signal: AbortSignal.timeout(45_000),
     });
-    return NextResponse.json(board);
+    // Sent with the board so the panel can say what the script will and will
+    // not get, rather than leaving it to be discovered in the finished file.
+    return NextResponse.json({ ...board, coverage: describeCoverage(board) });
   } catch (cause) {
     return NextResponse.json(
       {
