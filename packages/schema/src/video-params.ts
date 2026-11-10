@@ -8,6 +8,7 @@ import {
   VideoConcatMode,
   VideoFitMode,
   VideoGrade,
+  VideoPace,
   VideoTransitionMode,
 } from "./enums.ts";
 
@@ -57,6 +58,8 @@ export const VideoParams = z.object({
   video_clip_duration: z.number().int().min(1).default(5),
   /** A shared look across every clip. See VideoGrade. */
   video_grade: VideoGrade.default("natural"),
+  /** How often the picture changes, around video_clip_duration. */
+  video_pace: VideoPace.default("even"),
   video_clip_speed: z.number().positive().finite().default(1),
   /** Forces sequential concat and asks the LLM for ordered keywords. */
   match_materials_to_script: z.boolean().default(false),

@@ -1,6 +1,7 @@
 import type { VideoAspect } from "@tasawwur/schema";
 import { type Clip, searchPixabay } from "./pixabay.ts";
 import { relevance, sentences } from "./relevance.ts";
+import { paceShotSeconds, type Pace } from "./render/rhythm.ts";
 
 /**
  * Choosing and ordering the clips for a video, before anything is rendered.
@@ -45,6 +46,8 @@ export interface BuildOptions {
   clipDuration: number;
   /** Used to match each shot to the line it will cover. Optional. */
   script?: string;
+  /** A snappier cut needs more clips to cover the same narration. */
+  pace?: Pace;
   aspect?: VideoAspect;
   signal?: AbortSignal;
 }
@@ -144,7 +147,7 @@ function chooseShots(
  * shown and rearranged at no bandwidth cost. Files are fetched only on commit.
  */
 export async function buildStoryboard(opts: BuildOptions): Promise<Storyboard> {
-  const { apiKey, terms, narrationSeconds, clipDuration, script = "", aspect = "9:16", signal } = opts;
+  const { apiKey, terms, narrationSeconds, clipDuration, script = "", pace = "even", aspect = "9:16", signal } = opts;
 
   const cleaned = [...new Set(terms.map((t) => t.trim()).filter(Boolean))];
   if (cleaned.length === 0) {
@@ -165,8 +168,10 @@ export async function buildStoryboard(opts: BuildOptions): Promise<Storyboard> {
   const emptyTerms = results.filter(([, clips]) => clips.length === 0).map(([t]) => t);
 
   // One spare: the renderer trims to the narration, and running a shot short is
-  // worse than having one too many.
-  const wanted = Math.ceil(narrationSeconds / clipDuration) + 1;
+  // worse than having one too many. Shots are shorter at a snappy pace, so the
+  // same narration needs more of them.
+  const shotSeconds = paceShotSeconds(clipDuration, pace);
+  const wanted = Math.ceil(narrationSeconds / shotSeconds) + 1;
   const { shots, leftovers } = chooseShots(byTerm, wanted, sentences(script));
 
   return {
@@ -175,8 +180,8 @@ export async function buildStoryboard(opts: BuildOptions): Promise<Storyboard> {
       id: `${shot.clip.id}-${i}`,
       alternatives: (leftovers.get(shot.term) ?? []).slice(0, 8),
     })),
-    clipDuration,
-    totalSeconds: shots.length * clipDuration,
+    clipDuration: shotSeconds,
+    totalSeconds: shots.length * shotSeconds,
     narrationSeconds,
     emptyTerms,
   };

@@ -47,6 +47,13 @@ export type VideoTransitionMode = z.infer<typeof VideoTransitionMode>;
 export const VideoGrade = z.enum(["none", "natural", "warm", "cool"]);
 export type VideoGrade = z.infer<typeof VideoGrade>;
 
+/**
+ * How often the picture changes. All three cut on sentence ends; what varies
+ * is whether short sentences share a shot and how long one may run.
+ */
+export const VideoPace = z.enum(["snappy", "even", "measured"]);
+export type VideoPace = z.infer<typeof VideoPace>;
+
 export const ImageMotion = z.enum(["static", "zoom"]);
 export type ImageMotion = z.infer<typeof ImageMotion>;
 

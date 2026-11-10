@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { buildStoryboard, estimateNarrationSeconds, readSettings } from "@tasawwur/core";
-import { VideoAspect } from "@tasawwur/schema";
+import { VideoAspect, VideoPace } from "@tasawwur/schema";
 import { z } from "zod";
 
 /**
@@ -13,6 +13,7 @@ const Body = z.object({
   terms: z.array(z.string()).min(1).max(20),
   script: z.string().default(""),
   clipDuration: z.number().int().min(1).max(30).default(5),
+  pace: VideoPace.default("even"),
   aspect: VideoAspect.default("9:16"),
 });
 
@@ -42,6 +43,7 @@ export async function POST(req: Request) {
       terms: parsed.data.terms,
       narrationSeconds: estimateNarrationSeconds(parsed.data.script),
       script: parsed.data.script,
+      pace: parsed.data.pace,
       clipDuration: parsed.data.clipDuration,
       aspect: parsed.data.aspect,
       signal: AbortSignal.timeout(45_000),

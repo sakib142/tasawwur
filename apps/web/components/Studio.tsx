@@ -139,6 +139,7 @@ export function Studio() {
           terms: termsText.split(",").map((t) => t.trim()).filter(Boolean),
           script: params.video_script,
           clipDuration: params.video_clip_duration,
+          pace: params.video_pace,
           aspect: params.video_aspect,
         }),
       });

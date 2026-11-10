@@ -146,7 +146,7 @@ export function Storyboard({
                   {shot.line ?? shot.term}
                 </span>
                 <span className="truncate text-xs text-stone-500">
-                  {shot.clip.creator} · {board.clipDuration}s
+                  {shot.clip.creator} · ~{board.clipDuration.toFixed(1)}s
                   {shot.clip.bytes
                     ? ` · ${Math.round(shot.clip.bytes / 1e6)}MB`
                     : ""}

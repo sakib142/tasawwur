@@ -13,7 +13,40 @@ import type { Cue } from "../captions.ts";
  * by the time clips are built, so this costs a function call and no new work.
  */
 
+/**
+ * How often the picture should change.
+ *
+ * All three cut on sentence ends — the pace never buys itself a cut by
+ * slicing through someone mid-word. What changes is whether short sentences
+ * are allowed to share a shot, and how long a sentence may run before it is
+ * divided.
+ *
+ * "snappy" refuses to merge and divides sooner, so the picture turns over
+ * roughly once a sentence. "measured" lets consecutive sentences sit on one
+ * shot and holds it. "even" aims to use each clip about once, which is what
+ * the renderer has always done.
+ */
+export type Pace = "snappy" | "even" | "measured";
+
+/**
+ * `target` is the merge threshold: a shot closes once it reaches it, so a low
+ * value means one sentence per shot and a high one means several. `maxScale`
+ * stretches or tightens the caller's shot length around that pace.
+ *
+ * Both scales are needed. An early version moved only the target and left the
+ * ceiling alone, which made "measured" produce exactly the same cuts as
+ * "even" — the ceiling was already the binding constraint, so there was
+ * nothing for a longer target to do and the control looked broken.
+ */
+const PACING: Record<Pace, { targetScale: number; maxScale: number; minSeconds: number }> = {
+  snappy: { targetScale: 0.45, maxScale: 0.6, minSeconds: 1.2 },
+  even: { targetScale: 1, maxScale: 1, minSeconds: 1.5 },
+  measured: { targetScale: 1.9, maxScale: 1.6, minSeconds: 2 },
+};
+
 export interface RhythmOptions {
+  /** How often the picture changes. Defaults to "even". */
+  pace?: Pace;
   /** Below this a shot reads as a flash rather than an image. */
   minSeconds?: number;
   /** Above this a single shot outstays its welcome. */
@@ -31,6 +64,9 @@ export interface RhythmOptions {
 
 const DEFAULTS = { minSeconds: 1.5, maxSeconds: 7 } as const;
 
+/** No pace may hold a single shot longer than this, whatever it is asked. */
+const HARD_CEILING_SECONDS = 12;
+
 /**
  * One duration per shot, in order, cut on cue boundaries.
  *
@@ -39,13 +75,33 @@ const DEFAULTS = { minSeconds: 1.5, maxSeconds: 7 } as const;
  * enough that holding every clip for `maxSeconds` still would not cover it.
  * Callers cycle their clips over whatever comes back.
  */
+/**
+ * Roughly how long a shot runs at this pace, for a given base length.
+ *
+ * Used to work out how much footage to gather: a snappy cut needs more clips
+ * to cover the same narration, and finding that out at render time would mean
+ * repeating the few that were fetched.
+ */
+export function paceShotSeconds(base: number, pace: Pace = "even"): number {
+  const pacing = PACING[pace] ?? PACING.even;
+  return Math.max(
+    Math.min(base * pacing.maxScale, HARD_CEILING_SECONDS),
+    pacing.minSeconds,
+  );
+}
+
 export function shotDurations(
   cues: Cue[],
   clipCount: number,
   options: RhythmOptions = {},
 ): number[] {
-  const min = options.minSeconds ?? DEFAULTS.minSeconds;
-  const max = options.maxSeconds ?? DEFAULTS.maxSeconds;
+  const pacing = PACING[options.pace ?? "even"] ?? PACING.even;
+  const base = options.maxSeconds ?? DEFAULTS.maxSeconds;
+  const min = options.minSeconds ?? pacing.minSeconds;
+  // The caller's figure is the shot length at an even pace; the pace moves it
+  // either way. Held to a hard ceiling so that no choice here can leave one
+  // shot on screen for an uncomfortably long time.
+  const max = Math.max(Math.min(base * pacing.maxScale, HARD_CEILING_SECONDS), min);
   const clips = Math.max(1, Math.floor(clipCount));
 
   const segments = splitLongCues(cues, max);
@@ -59,9 +115,10 @@ export function shotDurations(
   const spoken = segments.reduce((n, d) => n + d, 0);
   const total = Math.max(options.totalSeconds ?? spoken, spoken);
 
-  // Aim to use every clip once. If that would hold shots beyond `max`, more
-  // shots are needed than there are clips and the caller will repeat them.
-  const target = clamp(total / clips, min, max);
+  // Aim to use every clip once, then bend that by the pace. If the result
+  // would hold shots beyond `max`, more shots are needed than there are clips
+  // and the caller will repeat them.
+  const target = clamp((total / clips) * pacing.targetScale, min, max);
 
   const shots: number[] = [];
   let current = 0;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { shotDurations } from "./rhythm.ts";
+import { paceShotSeconds, shotDurations } from "./rhythm.ts";
 import type { Cue } from "../captions.ts";
 
 /** Cues from a list of [start, end] pairs; the text never matters here. */
@@ -100,5 +100,87 @@ describe("shotDurations", () => {
   it("ignores cues with no duration", () => {
     const durations = shotDurations(cues([0, 0], [0, 4]), 1);
     expect(sum(durations)).toBeCloseTo(4, 5);
+  });
+});
+
+describe("pace", () => {
+  // The real cue timeline from job c77550fc.
+  const ends = [1.53, 4.131, 6.37, 7.977, 10.35];
+  const timeline = cues(
+    ...ends.map((end, i) => [i === 0 ? 0 : ends[i - 1]!, end] as [number, number]),
+  );
+  const opts = { maxSeconds: 5, totalSeconds: 10.43 };
+
+  const run = (pace: "snappy" | "even" | "measured") =>
+    shotDurations(timeline, 4, { ...opts, pace });
+
+  it("turns the picture over more often as the pace quickens", () => {
+    // The control has to do something visible, in the right direction.
+    expect(run("snappy").length).toBeGreaterThan(run("even").length);
+    expect(run("even").length).toBeGreaterThan(run("measured").length);
+  });
+
+  it("gives snappy about a shot per sentence", () => {
+    expect(run("snappy")).toHaveLength(timeline.length);
+  });
+
+  it("differs from even, which an earlier version did not", () => {
+    // Scaling only the merge threshold left the ceiling binding, so measured
+    // produced exactly the same cuts as even and the control looked broken.
+    expect(run("measured")).not.toEqual(run("even"));
+  });
+
+  it("covers the same narration whichever pace is chosen", () => {
+    for (const pace of ["snappy", "even", "measured"] as const) {
+      expect(sum(run(pace))).toBeCloseTo(10.43, 5);
+    }
+  });
+
+  it("never buys a cut by changing the picture mid-sentence", () => {
+    // The whole premise. A faster pace may divide a long sentence, but every
+    // boundary must still land on a cue edge or on an even division of one.
+    for (const pace of ["snappy", "even", "measured"] as const) {
+      let at = 0;
+      for (const d of run(pace).slice(0, -1)) {
+        at += d;
+        const onCue = ends.some((e) => Math.abs(e - at) < 0.001);
+        const insideSplit = ends.some((e, i) => {
+          const start = i === 0 ? 0 : ends[i - 1]!;
+          const span = e - start;
+          if (span <= 5) return false;
+          const parts = Math.ceil(span / 5);
+          return Array.from({ length: parts }, (_, k) => start + (span / parts) * (k + 1)).some(
+            (edge) => Math.abs(edge - at) < 0.001,
+          );
+        });
+        expect(onCue || insideSplit).toBe(true);
+      }
+    }
+  });
+
+  it("holds no shot beyond the hard ceiling, whatever it is asked for", () => {
+    const long = cues([0, 60]);
+    for (const d of shotDurations(long, 1, { pace: "measured", maxSeconds: 30 })) {
+      expect(d).toBeLessThanOrEqual(12.001);
+    }
+  });
+
+  it("defaults to even", () => {
+    expect(shotDurations(timeline, 4, opts)).toEqual(run("even"));
+  });
+});
+
+describe("paceShotSeconds", () => {
+  it("reports a shorter shot for a quicker pace", () => {
+    expect(paceShotSeconds(5, "snappy")).toBeLessThan(paceShotSeconds(5, "even"));
+    expect(paceShotSeconds(5, "measured")).toBeGreaterThan(paceShotSeconds(5, "even"));
+  });
+
+  it("never reports below a readable shot", () => {
+    expect(paceShotSeconds(0.1, "snappy")).toBeGreaterThanOrEqual(1.2);
+  });
+
+  it("respects the hard ceiling", () => {
+    expect(paceShotSeconds(30, "measured")).toBeLessThanOrEqual(12);
   });
 });

@@ -22,7 +22,7 @@ export function VideoSection({
 }) {
   const summary = [
     params.video_aspect,
-    `cuts to ${params.video_clip_duration}s`,
+    params.video_pace === "even" ? `${params.video_clip_duration}s cuts` : params.video_pace,
     params.video_grade !== "none" ? params.video_grade : null,
     params.video_count > 1 ? `${params.video_count} versions` : null,
   ]
@@ -78,8 +78,27 @@ export function VideoSection({
       </Field>
 
       <Field
-        label="Longest cut"
-        hint="Shots change where a sentence ends, so they vary. This is the most any one of them can run."
+        label="Pace"
+        hint="All three cut where a sentence ends — none of them buys a cut by changing the picture mid-word. What changes is whether short sentences share a shot."
+      >
+        <Select
+          value={params.video_pace}
+          onChange={(v) => set("video_pace", v)}
+          options={[
+            { value: "snappy", label: "Snappy — a shot per sentence" },
+            { value: "even", label: "Even — a shot per clip, roughly" },
+            { value: "measured", label: "Measured — let a shot sit" },
+          ]}
+        />
+      </Field>
+
+      <Field
+        label="Shot length"
+        hint={
+          params.video_pace === "even"
+            ? "Shots vary, because sentences do. This is about the longest one."
+            : `The length at an even pace; ${params.video_pace} works around it.`
+        }
       >
         <Slider
           value={params.video_clip_duration}

@@ -8,7 +8,7 @@
  * Rather than trusting that the new timings are applied, this renders a real
  * video and measures where the cuts actually landed in the file it produced.
  *
- *   pnpm tsx scripts/check-cuts.mts <material.mp4> [more.mp4 ...]
+ *   pnpm tsx scripts/check-cuts.mts [--pace snappy|even|measured] <material.mp4> ...
  */
 import { copyFile, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -49,7 +49,10 @@ function cueEdges(srt: string): number[] {
   return edges;
 }
 
-const materials = process.argv.slice(2);
+const argv = process.argv.slice(2);
+const paceAt = argv.indexOf("--pace");
+const pace = paceAt === -1 ? "even" : argv[paceAt + 1]!;
+const materials = paceAt === -1 ? argv : [...argv.slice(0, paceAt), ...argv.slice(paceAt + 2)];
 if (materials.length === 0) {
   console.error("Pass at least one video file to use as footage.");
   process.exit(1);
@@ -58,13 +61,14 @@ if (materials.length === 0) {
 const keep = join(tmpdir(), "tasawwur-cuts.mp4");
 const workDir = await mkdtemp(join(tmpdir(), "tasawwur-cuts-"));
 try {
-  console.log(`Rendering with ${materials.length} clips…`);
+  console.log(`Rendering with ${materials.length} clips at a ${pace} pace…`);
   const result = await renderVideo({
     params: VideoParams.parse({
       video_script: SCRIPT,
       video_source: "local",
       video_aspect: "9:16",
       video_clip_duration: 5,
+      video_pace: pace,
       voice_name: "af_heart",
       subtitle_display_mode: "sentence",
       font_name: "BeVietnamPro-Bold.ttf",

@@ -12,7 +12,7 @@ import { assemble, DURATION_MARGIN_SECONDS } from "./render/assemble.ts";
 import { renderCaptions } from "./render/captions.ts";
 import { normaliseClip, type Grade, type Transition } from "./render/clips.ts";
 import { CENTRE, findFraming } from "./render/framing.ts";
-import { shotDurations } from "./render/rhythm.ts";
+import { shotDurations, type Pace } from "./render/rhythm.ts";
 import { capabilities, probe, RenderError } from "./render/ffmpeg.ts";
 
 /**
@@ -180,6 +180,7 @@ export async function renderVideo(opts: PipelineOptions): Promise<PipelineResult
   // longest a shot may be held, which is what the setting always meant to the
   // person choosing it.
   const durations = shotDurations(sentenceCues, sources.length, {
+    pace: params.video_pace as Pace,
     maxSeconds: Math.max(params.video_clip_duration, 1.5),
     totalSeconds: durationSeconds + DURATION_MARGIN_SECONDS,
   });
