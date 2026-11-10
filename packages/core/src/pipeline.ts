@@ -227,6 +227,7 @@ export async function renderVideo(opts: PipelineOptions): Promise<PipelineResult
         fps: FPS,
         fit: params.video_fit_mode,
         framing,
+        imageMotion: params.image_motion,
         speed: params.video_clip_speed,
         transition,
         grade: params.video_grade as Grade,

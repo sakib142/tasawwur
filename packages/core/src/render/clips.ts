@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { extname, join } from "node:path";
 import { RenderError, ffmpeg, probe } from "./ffmpeg.ts";
 import { CENTRE, type Framing } from "./framing.ts";
 
@@ -66,6 +66,11 @@ export interface NormaliseOptions {
   framing?: Framing;
   /** Playback rate applied to the footage, not the narration. */
   speed: number;
+  /**
+   * What to do with a still. "zoom" gives it a slow push so a held photograph
+   * does not read as a frozen video; "static" holds it flat.
+   */
+  imageMotion?: "static" | "zoom";
   transition: Transition;
   /** A shared look. Defaults to none so callers opt in. */
   grade?: Grade;
@@ -115,12 +120,61 @@ function clamp01(n: number): number {
   return Number.isFinite(n) ? Math.min(Math.max(n, 0), 1) : 0.5;
 }
 
+/**
+ * Extensions that hold one frame rather than a span of time.
+ *
+ * Detected by name rather than by duration: a still reports about a fortieth
+ * of a second, and so does a genuinely very short video. Guessing wrong in
+ * that direction would loop a clip that was never meant to repeat.
+ *
+ * GIF is absent on purpose — it animates, and is handled as video.
+ */
+const STILL_EXTENSIONS = new Set([
+  ".jpg", ".jpeg", ".png", ".webp", ".avif", ".bmp", ".tif", ".tiff", ".heic",
+]);
+
+export function isStillImage(path: string): boolean {
+  return STILL_EXTENSIONS.has(extname(path).toLowerCase());
+}
+
+/**
+ * The slow push that keeps a held photograph from reading as a freeze.
+ *
+ * A still shown flat for five seconds looks like the video has stopped. The
+ * movement needs to be slight: enough that the frame is never quite still,
+ * not so much that it draws attention to itself.
+ *
+ * Only ever zooms in from 1.0 or out to it, because zoompan samples a region
+ * of the source and anything below 1.0 would have to invent edges.
+ */
+export function kenBurns(
+  duration: number,
+  fps: number,
+  width: number,
+  height: number,
+  direction: "in" | "out",
+): string {
+  const frames = Math.max(1, Math.round(duration * fps));
+  const depth = 0.1;
+  const z =
+    direction === "in"
+      ? `min(1+${depth}*on/${frames},${1 + depth})`
+      : `max(${1 + depth}-${depth}*on/${frames},1)`;
+  // d=1 is one output frame per input frame; zoompan is otherwise a filter
+  // for turning one still into many, which would multiply the length.
+  return (
+    `zoompan=z='${z}':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'` +
+    `:s=${width}x${height}:fps=${fps}`
+  );
+}
+
 /** Transitions that are a filter on the clip itself. */
 function transitionFilter(
   transition: Transition,
   duration: number,
   width: number,
   height: number,
+  fps: number,
 ): { filter: string; needsBackground: boolean } {
   // Short clips cannot carry a one-second transition without swallowing the
   // whole shot, so it shrinks to fit.
@@ -133,17 +187,20 @@ function transitionFilter(
       return { filter: `fade=t=out:st=${Math.max(duration - d, 0)}:d=${d}`, needsBackground: false };
     case "ZoomIn":
       // One output frame per input frame; zoompan is otherwise a stills filter.
+      // The frame count and the output rate must both be the clip's own. Both
+      // were pinned at 25 while the pipeline rendered at 30, so the zoom ran
+      // a fifth too fast and finished before the shot did.
       return {
         filter:
-          `zoompan=z='min(1+0.15*on/(${Math.max(duration, 0.1)}*25),1.15)':d=1` +
-          `:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${width}x${height}:fps=25`,
+          `zoompan=z='min(1+0.15*on/(${Math.max(duration, 0.1)}*${fps}),1.15)':d=1` +
+          `:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${width}x${height}:fps=${fps}`,
         needsBackground: false,
       };
     case "ZoomOut":
       return {
         filter:
-          `zoompan=z='max(1.15-0.15*on/(${Math.max(duration, 0.1)}*25),1)':d=1` +
-          `:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${width}x${height}:fps=25`,
+          `zoompan=z='max(1.15-0.15*on/(${Math.max(duration, 0.1)}*${fps}),1)':d=1` +
+          `:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${width}x${height}:fps=${fps}`,
         needsBackground: false,
       };
     default:
@@ -186,13 +243,16 @@ export async function normaliseClip(opts: NormaliseOptions): Promise<string> {
   const {
     source, outDir, index, width, height, duration, fps, fit, speed,
     framing = CENTRE, transition, grade = "none", availableFilters,
-    slideFrom = "left", encoder, signal,
+    imageMotion = "zoom", slideFrom = "left", encoder, signal,
   } = opts;
 
   if (duration <= 0) throw new RenderError("A clip needs a duration above zero.");
 
+  const still = isStillImage(source);
   const info = await probe(source);
-  if (info.durationSeconds <= 0) {
+  // A still legitimately reports about a fortieth of a second — that is one
+  // frame, not a corrupt file.
+  if (!still && info.durationSeconds <= 0) {
     throw new RenderError(`“${source}” reports no duration; it may be corrupt.`);
   }
 
@@ -201,10 +261,33 @@ export async function normaliseClip(opts: NormaliseOptions): Promise<string> {
   const sourceNeeded = duration * speed;
   const output = join(outDir, `clip-${String(index).padStart(3, "0")}.mp4`);
 
+  /*
+   * A still has to be looped to fill its shot.
+   *
+   * Without this the input was clamped to the one frame the file contains and
+   * the shot came out a thirtieth of a second long — an upload of photographs
+   * produced a video in which each one flashed past. The frame rate is set on
+   * the input too, so the loop generates frames at the rate the rest of the
+   * chain expects rather than ffmpeg's default.
+   */
+  const inputArgs = still
+    ? ["-loop", "1", "-framerate", String(fps), "-t", String(duration), "-i", source]
+    : ["-t", String(Math.min(sourceNeeded, info.durationSeconds)), "-i", source];
+
   const isSlide = transition === "SlideIn" || transition === "SlideOut";
+  // Direction alternates so a run of stills does not all push the same way,
+  // which reads as a mannerism rather than as movement.
+  const motion =
+    still && imageMotion === "zoom"
+      ? kenBurns(duration, fps, width, height, index % 2 === 0 ? "in" : "out")
+      : "";
+
   const base = [
     fitFilter(width, height, fit, framing),
-    speed !== 1 ? `setpts=PTS/${speed}` : "",
+    motion,
+    // Speed is a property of footage. A still has no motion to hurry, and
+    // retiming the generated frames would only cut the shot short.
+    !still && speed !== 1 ? `setpts=PTS/${speed}` : "",
     `fps=${fps}`,
     "setsar=1",
     COLOUR,
@@ -225,7 +308,13 @@ export async function normaliseClip(opts: NormaliseOptions): Promise<string> {
       "-map", "[v]",
     ];
   } else {
-    const extra = transitionFilter(transition, duration, width, height).filter;
+    // A still already moving under Ken Burns does not want a second zoom on
+    // top of it; the other transitions still apply.
+    const zooming = transition === "ZoomIn" || transition === "ZoomOut";
+    const extra =
+      motion && zooming
+        ? ""
+        : transitionFilter(transition, duration, width, height, fps).filter;
     filterArgs = [
       "-vf",
       [...base, extra, "format=yuv420p"].filter(Boolean).join(","),
@@ -235,10 +324,7 @@ export async function normaliseClip(opts: NormaliseOptions): Promise<string> {
 
   await ffmpeg(
     [
-      // Seeking before the input is far faster, and clips are used from the
-      // start, so there is nothing to lose by it.
-      "-t", String(Math.min(sourceNeeded, info.durationSeconds)),
-      "-i", source,
+      ...inputArgs,
       ...filterArgs,
       "-an",
       "-c:v", encoder,
