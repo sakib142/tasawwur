@@ -96,14 +96,21 @@ export function Studio() {
 
 
   useEffect(() => {
-    if (!stream.finished) return;
+    // A render picked up again after a refresh arrives mid-flight, with no
+    // click to have set the phase. Without this the progress panel never
+    // appeared for the very case the page is remembering renders for.
+    if (!stream.job) return;
+    if (!stream.finished) {
+      setPhase("running");
+      return;
+    }
     if (stream.error) {
       setPhase("error");
       setError(stream.error);
     } else {
       setPhase("done");
     }
-  }, [stream.finished, stream.error]);
+  }, [stream.job, stream.finished, stream.error]);
 
   const writeTerms = useCallback(
     async (forScript: string) => {
@@ -502,6 +509,24 @@ export function Studio() {
               >
                 Download
               </a>
+              {/*
+                A finished render is remembered across a refresh so the result
+                is not lost, which left no way to put it down: the video came
+                back on every reload and the panel could not be cleared. This
+                only stops the page following it — the file stays on disk.
+              */}
+              <button
+                type="button"
+                onClick={() => {
+                  // Both, or the panel renders neither: the finished view
+                  // needs the id and the empty view needs the phase.
+                  setTaskId(null);
+                  setPhase("idle");
+                }}
+                className="underline underline-offset-4 text-stone-500 hover:text-stone-900 dark:hover:text-stone-100"
+              >
+                Start another
+              </button>
               <span className="font-mono text-xs text-stone-500">{taskId}</span>
             </div>
             <ActivityLog entries={stream.log} />
